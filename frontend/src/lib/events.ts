@@ -22,4 +22,15 @@ export type VoiceEvent = {
   request_id?: string;
   stage?: Stage;
   message?: string;
+  token?: string;
+  transcript?: string;
+  response?: string;
+  audio_url?: string;
+  duration_ms?: number;
+  metrics?: {
+    asr_ms?: number;
+    llm_total_ms?: number;
+    tts_total_ms?: number;
+    total_ms?: number;
+  };
 };
