@@ -1,10 +1,14 @@
+import asyncio
+import os
 from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from app.events import new_request_id, utc_timestamp, voice_event
+from app.logging import log_event
 from app.pipeline import generate_response, synthesize_speech, transcribe_audio
-from app.storage import save_request
+from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
 
 app = FastAPI(title="Realtime Voice AI Reliability Lab")
@@ -19,12 +23,43 @@ def health() -> dict[str, str]:
     }
 
 
+@app.get("/requests")
+def list_requests(limit: int = 20) -> dict[str, object]:
+    return {"requests": recent_requests(limit=min(limit, 100))}
+
+
+@app.get("/requests/{request_id}")
+def request_detail(request_id: str) -> dict[str, object]:
+    trace = get_request(request_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return trace
+
+
+@app.post("/requests/{request_id}/replay-transcript")
+async def replay_transcript(request_id: str) -> dict[str, object]:
+    trace = get_request(request_id)
+    if not trace or not trace.get("transcript"):
+        raise HTTPException(status_code=404, detail="Request transcript not found")
+    return await run_text_pipeline(str(trace["transcript"]), replay_of=request_id)
+
+
+@app.post("/requests/{request_id}/replay-audio")
+async def replay_audio(request_id: str) -> dict[str, object]:
+    trace = get_request(request_id)
+    audio_path = trace.get("audio_path") if trace else None
+    if not audio_path or not Path(str(audio_path)).exists():
+        raise HTTPException(status_code=404, detail="Request audio not found")
+    return await run_voice_pipeline(Path(str(audio_path)).read_bytes(), {}, replay_of=request_id)
+
+
 @app.websocket("/ws/voice")
 async def voice_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     request_id = new_request_id()
     total = Timer()
     metadata: dict[str, object] = {}
+    log_event("request_started", request_id=request_id)
     await websocket.send_json(voice_event("request_started", request_id=request_id))
 
     try:
@@ -78,14 +113,14 @@ async def handle_audio(
     websocket: WebSocket, request_id: str, audio: bytes, metadata: dict[str, object], total: Timer
 ) -> None:
     if not audio:
-        await websocket.send_json(
-            voice_event(
-                "request_failed",
-                request_id=request_id,
-                stage="audio_validation",
-                message="Recorded audio was empty.",
-            )
+        event = voice_event(
+            "request_failed",
+            request_id=request_id,
+            stage="audio_validation",
+            message="Recorded audio was empty.",
         )
+        log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
+        await websocket.send_json(event)
         return
 
     await websocket.send_json(
@@ -100,62 +135,159 @@ async def handle_audio(
         )
     )
 
-    asr = Timer()
-    await websocket.send_json(voice_event("stage_started", request_id=request_id, stage="asr"))
-    transcript = transcribe_audio(audio)
-    asr_ms = asr.ms()
-    await websocket.send_json(
-        voice_event("transcript_completed", request_id=request_id, transcript=transcript)
-    )
-    await websocket.send_json(
-        voice_event("stage_completed", request_id=request_id, stage="asr", duration_ms=asr_ms)
-    )
-
-    llm = Timer()
-    await websocket.send_json(voice_event("stage_started", request_id=request_id, stage="llm"))
-    assistant_response = generate_response(transcript)
-    for token in assistant_response.split():
-        await websocket.send_json(voice_event("llm_token", request_id=request_id, token=f"{token} "))
-    llm_ms = llm.ms()
-    await websocket.send_json(
-        voice_event("llm_completed", request_id=request_id, response=assistant_response)
-    )
-    await websocket.send_json(
-        voice_event("stage_completed", request_id=request_id, stage="llm", duration_ms=llm_ms)
-    )
-
-    tts = Timer()
-    await websocket.send_json(voice_event("stage_started", request_id=request_id, stage="tts"))
-    audio_url = synthesize_speech(assistant_response)
-    tts_ms = tts.ms()
-    await websocket.send_json(voice_event("tts_audio_ready", request_id=request_id, audio_url=audio_url))
-    await websocket.send_json(
-        voice_event("stage_completed", request_id=request_id, stage="tts", duration_ms=tts_ms)
-    )
-
-    total_ms = total.ms()
-    metrics = {
-        "asr_ms": asr_ms,
-        "llm_total_ms": llm_ms,
-        "tts_total_ms": tts_ms,
-        "total_ms": total_ms,
-    }
-    save_request(
-        {
-            "request_id": request_id,
-            "status": "completed",
-            "transcript": transcript,
-            "assistant_response": assistant_response,
-            "created_at": utc_timestamp(),
-            **metrics,
-        }
-    )
+    result = await run_voice_pipeline(audio, metadata, request_id=request_id, total=total)
+    for event in result.pop("events"):
+        await websocket.send_json(event)
     await websocket.send_json(
         voice_event(
             "request_completed",
             request_id=request_id,
             message="Voice pipeline completed.",
             audio_size=len(audio),
-            metrics=metrics,
+            metrics=result["metrics"],
         )
     )
+
+
+async def run_voice_pipeline(
+    audio: bytes,
+    metadata: dict[str, object],
+    request_id: str | None = None,
+    total: Timer | None = None,
+    replay_of: str | None = None,
+) -> dict[str, object]:
+    request_id = request_id or new_request_id()
+    total = total or Timer()
+    audio_path = save_audio(request_id, audio) if os.getenv("AUDIO_PERSISTENCE_ENABLED") == "true" else None
+    events: list[dict[str, object]] = []
+
+    asr = Timer()
+    events.append(voice_event("stage_started", request_id=request_id, stage="asr"))
+    try:
+        transcript = await asyncio.wait_for(
+            asyncio.to_thread(transcribe_audio, audio),
+            timeout=float(os.getenv("ASR_TIMEOUT_SECONDS", "30")),
+        )
+        asr_ms = asr.ms()
+        events.append(voice_event("transcript_completed", request_id=request_id, transcript=transcript))
+        events.append(voice_event("stage_completed", request_id=request_id, stage="asr", duration_ms=asr_ms))
+    except TimeoutError:
+        return save_failure(request_id, "asr", "ASR timed out.", total, replay_of, audio_path)
+
+    text_result = await run_text_pipeline(
+        transcript,
+        request_id=request_id,
+        total=total,
+        replay_of=replay_of,
+        audio_path=audio_path,
+        asr_ms=asr_ms,
+    )
+    return {"events": events + text_result["events"], "metrics": text_result["metrics"]}
+
+
+async def run_text_pipeline(
+    transcript: str,
+    request_id: str | None = None,
+    total: Timer | None = None,
+    replay_of: str | None = None,
+    audio_path: str | None = None,
+    asr_ms: int | None = None,
+) -> dict[str, object]:
+    request_id = request_id or new_request_id()
+    total = total or Timer()
+    events: list[dict[str, object]] = []
+
+    llm = Timer()
+    events.append(voice_event("stage_started", request_id=request_id, stage="llm"))
+    try:
+        assistant_response = await asyncio.wait_for(
+            asyncio.to_thread(generate_response, transcript),
+            timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "45")),
+        )
+    except TimeoutError:
+        assistant_response = "I had trouble generating a full response from the local model. Please try again with a shorter request."
+    for token in assistant_response.split():
+        events.append(voice_event("llm_token", request_id=request_id, token=f"{token} "))
+    llm_ms = llm.ms()
+    events.append(voice_event("llm_completed", request_id=request_id, response=assistant_response))
+    events.append(voice_event("stage_completed", request_id=request_id, stage="llm", duration_ms=llm_ms))
+
+    tts = Timer()
+    events.append(voice_event("stage_started", request_id=request_id, stage="tts"))
+    try:
+        audio_url = await asyncio.wait_for(
+            asyncio.to_thread(synthesize_speech, assistant_response),
+            timeout=float(os.getenv("TTS_TIMEOUT_SECONDS", "30")),
+        )
+        tts_ms: int | None = tts.ms()
+        events.append(voice_event("tts_audio_ready", request_id=request_id, audio_url=audio_url))
+        events.append(voice_event("stage_completed", request_id=request_id, stage="tts", duration_ms=tts_ms))
+    except TimeoutError:
+        tts_ms = None
+        events.append(
+            voice_event(
+                "request_failed",
+                request_id=request_id,
+                stage="tts",
+                message="Speech synthesis timed out. Text response is still available.",
+            )
+        )
+
+    total_ms = total.ms()
+    metrics = build_metrics(asr_ms, llm_ms, tts_ms, total_ms)
+    status = "completed" if tts_ms is not None else "degraded"
+    save_request(
+        {
+            "request_id": request_id,
+            "status": status,
+            "transcript": transcript,
+            "assistant_response": assistant_response,
+            "audio_path": audio_path,
+            "replay_of": replay_of,
+            "created_at": utc_timestamp(),
+            **metrics,
+        }
+    )
+    log_event("request_completed", request_id=request_id, status=status, **metrics)
+    return {"request_id": request_id, "events": events, "metrics": metrics}
+
+
+def build_metrics(asr_ms: int | None, llm_ms: int | None, tts_ms: int | None, total_ms: int) -> dict[str, object]:
+    stages = {"asr": asr_ms, "llm": llm_ms, "tts": tts_ms}
+    measured = {stage: value for stage, value in stages.items() if value is not None}
+    slowest = max(measured, key=lambda stage: measured[stage]) if measured else None
+    return {
+        "asr_ms": asr_ms,
+        "llm_total_ms": llm_ms,
+        "tts_total_ms": tts_ms,
+        "total_ms": total_ms,
+        "slowest_stage": slowest,
+    }
+
+
+def save_failure(
+    request_id: str, stage: str, message: str, total: Timer, replay_of: str | None, audio_path: str | None
+) -> dict[str, object]:
+    total_ms = total.ms()
+    save_request(
+        {
+            "request_id": request_id,
+            "status": "failed",
+            "audio_path": audio_path,
+            "replay_of": replay_of,
+            "created_at": utc_timestamp(),
+            "total_ms": total_ms,
+        }
+    )
+    log_event("request_failed", request_id=request_id, stage=stage, message=message, total_ms=total_ms)
+    return {
+        "events": [voice_event("request_failed", request_id=request_id, stage=stage, message=message)],
+        "metrics": {"total_ms": total_ms, "slowest_stage": stage},
+    }
+
+
+def save_audio(request_id: str, audio: bytes) -> str:
+    path = Path("recordings") / f"{request_id}.webm"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(audio)
+    return str(path)

@@ -6,6 +6,16 @@ import type { VoiceEvent } from "../src/lib/events";
 
 const stages = ["ASR", "LLM", "TTS", "Overhead"];
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
+const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+type RequestRow = {
+  request_id: string;
+  status: string;
+  transcript?: string;
+  total_ms?: number;
+  slowest_stage?: string;
+  created_at: string;
+};
 
 export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
@@ -21,6 +31,7 @@ export default function Home() {
   const [response, setResponse] = useState("No response yet.");
   const [audioUrl, setAudioUrl] = useState("");
   const [metrics, setMetrics] = useState<VoiceEvent["metrics"]>({});
+  const [requests, setRequests] = useState<RequestRow[]>([]);
 
   useEffect(() => {
     const socket = new WebSocket(wsUrl);
@@ -45,6 +56,7 @@ export default function Home() {
       if (event.type === "request_completed") {
         setStatus("completed");
         setMetrics(event.metrics ?? {});
+        void loadRequests();
       }
       if (event.type === "request_failed") {
         setStatus("failed");
@@ -52,8 +64,19 @@ export default function Home() {
       }
     });
 
+    void loadRequests();
     return () => socket.close();
   }, []);
+
+  async function loadRequests() {
+    try {
+      const response = await fetch(`${apiUrl}/requests?limit=8`);
+      const payload = (await response.json()) as { requests: RequestRow[] };
+      setRequests(payload.requests);
+    } catch {
+      setRequests([]);
+    }
+  }
 
   async function startRecording() {
     setError("");
@@ -118,6 +141,19 @@ export default function Home() {
     setResponse("No response yet.");
     setAudioUrl("");
     setMetrics({});
+  }
+
+  async function replay(requestId: string, mode: "transcript" | "audio") {
+    const endpoint = mode === "audio" ? "replay-audio" : "replay-transcript";
+    const response = await fetch(`${apiUrl}/requests/${requestId}/${endpoint}`, { method: "POST" });
+    if (!response.ok) {
+      setError(`${mode} replay is unavailable for this request.`);
+      return;
+    }
+    const payload = await response.json();
+    setEvents((payload.events ?? []).reverse());
+    setMetrics(payload.metrics ?? {});
+    void loadRequests();
   }
 
   const isRecording = status === "recording";
@@ -254,9 +290,58 @@ export default function Home() {
                   <span>{metrics.total_ms} ms</span>
                 </div>
               ) : null}
+              {metrics?.slowest_stage ? <p className="slowest">Slowest: {metrics.slowest_stage}</p> : null}
             </div>
           </div>
         </aside>
+      </section>
+
+      <section className="requests panel" aria-labelledby="requests-title">
+        <div className="panel-header">
+          <h2 className="panel-title" id="requests-title">
+            Recent Requests
+          </h2>
+          <button type="button" onClick={loadRequests}>
+            Refresh
+          </button>
+        </div>
+        <div className="panel-body table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Slowest</th>
+                <th>Replay</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.length ? (
+                requests.map((request) => (
+                  <tr key={request.request_id}>
+                    <td title={request.transcript}>{request.request_id}</td>
+                    <td>{request.status}</td>
+                    <td>{request.total_ms ?? "-"} ms</td>
+                    <td>{request.slowest_stage ?? "-"}</td>
+                    <td className="row-actions">
+                      <button type="button" onClick={() => replay(request.request_id, "transcript")}>
+                        Transcript
+                      </button>
+                      <button type="button" onClick={() => replay(request.request_id, "audio")}>
+                        Audio
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5}>No requests stored yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );

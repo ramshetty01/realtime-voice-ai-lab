@@ -1,4 +1,4 @@
-from app.storage import connect, save_request
+from app.storage import connect, get_request, recent_requests, save_request
 
 
 def test_save_request_persists_trace(tmp_path) -> None:
@@ -13,12 +13,17 @@ def test_save_request_persists_trace(tmp_path) -> None:
             "llm_total_ms": 2,
             "tts_total_ms": 3,
             "total_ms": 6,
+            "slowest_stage": "tts",
             "created_at": "2026-07-14T00:00:00+00:00",
         },
         path=db_path,
     )
 
     with connect(db_path) as db:
-        row = db.execute("select transcript, total_ms from requests where request_id = ?", ("req_test",)).fetchone()
+        row = db.execute(
+            "select transcript, total_ms, slowest_stage from requests where request_id = ?", ("req_test",)
+        ).fetchone()
 
-    assert row == ("hello", 6)
+    assert row == ("hello", 6, "tts")
+    assert get_request("req_test", path=db_path)["assistant_response"] == "hi"
+    assert recent_requests(path=db_path)[0]["request_id"] == "req_test"
