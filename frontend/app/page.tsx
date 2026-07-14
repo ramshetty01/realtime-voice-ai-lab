@@ -17,6 +17,10 @@ export default function Home() {
   const [error, setError] = useState("");
   const [events, setEvents] = useState<VoiceEvent[]>([]);
   const [audioInfo, setAudioInfo] = useState("No audio sent yet.");
+  const [transcript, setTranscript] = useState("No transcript yet.");
+  const [response, setResponse] = useState("No response yet.");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [metrics, setMetrics] = useState<VoiceEvent["metrics"]>({});
 
   useEffect(() => {
     const socket = new WebSocket(wsUrl);
@@ -32,7 +36,16 @@ export default function Home() {
       if (typeof message.data !== "string") return;
       const event = JSON.parse(message.data) as VoiceEvent;
       setEvents((current) => [event, ...current].slice(0, 8));
-      if (event.type === "request_completed") setStatus("completed");
+      if (event.type === "transcript_completed" && event.transcript) setTranscript(event.transcript);
+      if (event.type === "llm_token" && event.token) {
+        setResponse((current) => (current === "No response yet." ? event.token ?? "" : current + event.token));
+      }
+      if (event.type === "llm_completed" && event.response) setResponse(event.response);
+      if (event.type === "tts_audio_ready" && event.audio_url) setAudioUrl(event.audio_url);
+      if (event.type === "request_completed") {
+        setStatus("completed");
+        setMetrics(event.metrics ?? {});
+      }
       if (event.type === "request_failed") {
         setStatus("failed");
         setError(event.message ?? "Request failed.");
@@ -101,6 +114,10 @@ export default function Home() {
     );
     socket.send(await audio.arrayBuffer());
     setAudioInfo(`${audio.type || "audio"} · ${audio.size} bytes · ${duration_ms} ms`);
+    setTranscript("Transcribing...");
+    setResponse("No response yet.");
+    setAudioUrl("");
+    setMetrics({});
   }
 
   const isRecording = status === "recording";
@@ -154,7 +171,7 @@ export default function Home() {
               </h2>
             </div>
             <div className="panel-body">
-              <div className="text-box">No transcript yet.</div>
+              <div className="text-box">{transcript}</div>
             </div>
           </section>
 
@@ -162,6 +179,22 @@ export default function Home() {
             <div className="panel-header">
               <h2 className="panel-title" id="response-title">
                 Assistant Response
+              </h2>
+            </div>
+            <div className="panel-body">
+              {audioUrl ? (
+                <audio className="player" controls src={audioUrl}>
+                  <track kind="captions" />
+                </audio>
+              ) : null}
+              <div className="text-box response-box">{response}</div>
+            </div>
+          </section>
+
+          <section className="panel" aria-labelledby="events-title">
+            <div className="panel-header">
+              <h2 className="panel-title" id="events-title">
+                Backend Events
               </h2>
             </div>
             <div className="panel-body">
@@ -191,15 +224,36 @@ export default function Home() {
           </div>
           <div className="panel-body">
             <div className="metrics">
-              {stages.map((stage) => (
-                <div className="metric-row" key={stage}>
-                  <span>{stage}</span>
-                  <div className="bar" aria-hidden="true">
-                    <span />
+              {stages.map((stage) => {
+                const key =
+                  stage === "ASR"
+                    ? "asr_ms"
+                    : stage === "LLM"
+                      ? "llm_total_ms"
+                      : stage === "TTS"
+                        ? "tts_total_ms"
+                        : "total_ms";
+                const value = metrics?.[key];
+                const width = value && metrics?.total_ms ? Math.min(100, (value / metrics.total_ms) * 100) : 0;
+                return (
+                  <div className="metric-row" key={stage}>
+                    <span>{stage}</span>
+                    <div className="bar" aria-hidden="true">
+                      <span style={{ width: `${width}%` }} />
+                    </div>
+                    <span>{value ?? "-"} ms</span>
                   </div>
-                  <span>- ms</span>
+                );
+              })}
+              {metrics?.total_ms ? (
+                <div className="metric-row total-row">
+                  <span>Total</span>
+                  <div className="bar" aria-hidden="true">
+                    <span style={{ width: "100%" }} />
+                  </div>
+                  <span>{metrics.total_ms} ms</span>
                 </div>
-              ))}
+              ) : null}
             </div>
           </div>
         </aside>

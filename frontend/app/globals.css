@@ -143,6 +143,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.response-box {
+  margin-top: 12px;
+}
+
+.player {
+  width: 100%;
+}
+
 .metrics {
   display: grid;
   gap: 10px;
@@ -155,6 +163,11 @@ button:disabled {
   gap: 10px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.total-row {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .bar {
