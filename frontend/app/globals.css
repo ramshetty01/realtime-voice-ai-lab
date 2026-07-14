@@ -88,6 +88,11 @@ button:disabled {
   margin: 0 auto;
 }
 
+.requests {
+  max-width: 1180px;
+  margin: 16px auto 0;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -168,6 +173,35 @@ button:disabled {
 .total-row {
   color: var(--text);
   font-weight: 700;
+}
+
+.slowest {
+  margin: 12px 0 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .bar {

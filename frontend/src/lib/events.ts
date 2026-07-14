@@ -32,5 +32,6 @@ export type VoiceEvent = {
     llm_total_ms?: number;
     tts_total_ms?: number;
     total_ms?: number;
+    slowest_stage?: string;
   };
 };
