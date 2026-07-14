@@ -24,8 +24,7 @@ uvicorn app.main:app --reload
 ```sh
 cd frontend
 npm install
+npm run dev
 ```
-
-Frontend run commands are added with the first executable app shell.
 
 The full product spec is in [docs/PRD.md](docs/PRD.md).
