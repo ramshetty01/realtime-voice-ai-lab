@@ -76,6 +76,10 @@ button:disabled {
   background: var(--danger);
 }
 
+.status-connected .status-dot {
+  background: var(--accent);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
@@ -133,6 +137,10 @@ button:disabled {
   border-radius: 6px;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.event-log {
+  overflow-wrap: anywhere;
 }
 
 .metrics {

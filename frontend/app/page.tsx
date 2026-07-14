@@ -1,13 +1,118 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import type { VoiceEvent } from "../src/lib/events";
+
 const stages = ["ASR", "LLM", "TTS", "Overhead"];
+const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 
 export default function Home() {
+  const socketRef = useRef<WebSocket | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const startedAtRef = useRef<number>(0);
+  const [connection, setConnection] = useState("connecting");
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [events, setEvents] = useState<VoiceEvent[]>([]);
+  const [audioInfo, setAudioInfo] = useState("No audio sent yet.");
+
+  useEffect(() => {
+    const socket = new WebSocket(wsUrl);
+    socketRef.current = socket;
+
+    socket.addEventListener("open", () => setConnection("connected"));
+    socket.addEventListener("close", () => setConnection("disconnected"));
+    socket.addEventListener("error", () => {
+      setConnection("error");
+      setError("WebSocket connection failed.");
+    });
+    socket.addEventListener("message", (message) => {
+      if (typeof message.data !== "string") return;
+      const event = JSON.parse(message.data) as VoiceEvent;
+      setEvents((current) => [event, ...current].slice(0, 8));
+      if (event.type === "request_completed") setStatus("completed");
+      if (event.type === "request_failed") {
+        setStatus("failed");
+        setError(event.message ?? "Request failed.");
+      }
+    });
+
+    return () => socket.close();
+  }, []);
+
+  async function startRecording() {
+    setError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Microphone recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunksRef.current = [];
+      startedAtRef.current = performance.now();
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      });
+      recorder.addEventListener("stop", () => {
+        stream.getTracks().forEach((track) => track.stop());
+        void sendAudio();
+      });
+      recorder.start();
+      setStatus("recording");
+    } catch {
+      setError("Microphone permission was denied.");
+      setStatus("idle");
+    }
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+    setStatus("sending");
+  }
+
+  async function sendAudio() {
+    const socket = socketRef.current;
+    const audio = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType });
+    const duration_ms = Math.round(performance.now() - startedAtRef.current);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setError("WebSocket is not connected.");
+      setStatus("failed");
+      return;
+    }
+    if (!audio.size) {
+      setError("Recorded audio was empty.");
+      setStatus("failed");
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        type: "client_audio_ready",
+        timestamp: new Date().toISOString(),
+        mime_type: audio.type,
+        size: audio.size,
+        duration_ms,
+      })
+    );
+    socket.send(await audio.arrayBuffer());
+    setAudioInfo(`${audio.type || "audio"} · ${audio.size} bytes · ${duration_ms} ms`);
+  }
+
+  const isRecording = status === "recording";
+  const canStart = connection === "connected" && !isRecording && status !== "sending";
+
   return (
     <main className="shell">
       <header className="topbar">
         <h1 className="title">Realtime Voice AI Reliability Lab</h1>
-        <div className="status" aria-label="Backend connection status">
+        <div className={`status status-${connection}`} aria-label="Backend connection status">
           <span className="status-dot" aria-hidden="true" />
-          Backend not connected
+          Backend {connection}
         </div>
       </header>
 
@@ -19,16 +124,26 @@ export default function Home() {
                 Voice Request
               </h2>
               <div className="controls">
-                <button className="primary" type="button" disabled>
+                <button className="primary" type="button" disabled={!canStart} onClick={startRecording}>
                   Start
                 </button>
-                <button type="button" disabled>
+                <button type="button" disabled={!isRecording} onClick={stopRecording}>
                   Stop
                 </button>
               </div>
             </div>
             <div className="panel-body">
-              <div className="text-box">Recording controls connect in the microphone capture step.</div>
+              <div className="text-box">
+                <strong>Status:</strong> {status}
+                <br />
+                <strong>Audio:</strong> {audioInfo}
+                {error ? (
+                  <>
+                    <br />
+                    <strong>Error:</strong> {error}
+                  </>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -50,7 +165,20 @@ export default function Home() {
               </h2>
             </div>
             <div className="panel-body">
-              <div className="text-box">No response yet.</div>
+              <div className="text-box event-log">
+                {events.length ? (
+                  events.map((event, index) => (
+                    <div key={`${event.timestamp}-${index}`}>
+                      {event.type}
+                      {event.request_id ? ` · ${event.request_id}` : ""}
+                      {event.stage ? ` · ${event.stage}` : ""}
+                      {event.message ? ` · ${event.message}` : ""}
+                    </div>
+                  ))
+                ) : (
+                  "No backend events yet."
+                )}
+              </div>
             </div>
           </section>
         </div>
