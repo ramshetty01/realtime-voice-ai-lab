@@ -18,6 +18,7 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+uvicorn app.main:app --reload
 ```
 
 ```sh
@@ -25,6 +26,6 @@ cd frontend
 npm install
 ```
 
-Backend and frontend run commands are added with their first executable app entrypoints.
+Frontend run commands are added with the first executable app shell.
 
 The full product spec is in [docs/PRD.md](docs/PRD.md).
