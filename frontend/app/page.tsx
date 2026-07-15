@@ -169,9 +169,9 @@ export default function Home() {
     <main className="shell">
       <header className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Realtime Voice AI</p>
-          <h1 className="title">Reliability Lab</h1>
-          <p className="subtitle">Speak, inspect the pipeline, and replay traces from one local console.</p>
+          <p className="eyebrow">Realtime Voice AI / Structure</p>
+          <h1 className="title">Voice Pipeline Lab</h1>
+          <p className="subtitle">Audio input, ASR, LLM, TTS, latency traces, and replay in one live console.</p>
         </div>
         <div className="hero-status">
           <div className={`status status-${connection}`} aria-label="Backend connection status">
@@ -190,7 +190,7 @@ export default function Home() {
             <span className="label">Session</span>
             <strong>{status}</strong>
           </div>
-          <div className="orb" aria-hidden="true">
+          <div className="signal-panel" aria-hidden="true">
             <div className="meter">
               <span />
               <span />
@@ -198,6 +198,14 @@ export default function Home() {
               <span />
               <span />
             </div>
+          </div>
+          <div className="pipeline-tree" aria-label="Pipeline structure">
+            <div className="tree-row tree-root">voice_lab/</div>
+            <div className="tree-row tree-folder">audio/ input_stream.wav</div>
+            <div className="tree-row tree-folder">asr/ transcript.json</div>
+            <div className="tree-row tree-folder">llm/ response.tokens</div>
+            <div className="tree-row tree-folder">tts/ output_audio.mp3</div>
+            <div className="tree-row tree-file">traces/ latency.jsonl</div>
           </div>
           <div className="recorder-actions">
             <button className="primary record-button" type="button" disabled={!canStart} onClick={startRecording}>

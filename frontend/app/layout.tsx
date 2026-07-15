@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Realtime Voice AI Reliability Lab",
-  description: "Local-first voice AI reliability lab",
+  title: "Voice Pipeline Lab",
+  description: "Realtime voice AI pipeline console",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
