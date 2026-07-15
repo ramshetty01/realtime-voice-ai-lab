@@ -56,9 +56,17 @@ docker compose up --build
 
 The app stays free by default:
 
-- ASR uses a development transcript fallback unless `ASR_TRANSCRIPT_TEXT` or a future local ASR backend is configured.
+- ASR uses `faster-whisper` when installed; otherwise it falls back to `ASR_TRANSCRIPT_TEXT` or a development transcript.
 - LLM calls Ollama at `OLLAMA_BASE_URL`; if Ollama is unavailable, the app returns a clear fallback response.
 - TTS calls Piper when `PIPER_BIN` and `PIPER_MODEL_PATH` are valid; otherwise it returns a short playable WAV fallback.
+
+Optional local ASR:
+
+```sh
+cd backend
+source .venv/bin/activate
+pip install faster-whisper
+```
 
 Generated data is ignored by git:
 

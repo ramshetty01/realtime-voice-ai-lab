@@ -29,4 +29,4 @@ Built a local-first realtime voice AI system with browser microphone capture, Fa
 
 | Machine | ASR Model | LLM Model | TTS Model | Median ASR | Median LLM | Median TTS | Median Total |
 |---|---|---|---|---:|---:|---:|---:|
-| Local dev | fallback | Ollama fallback | WAV fallback | TBD | TBD | TBD | TBD |
+| Local dev | faster-whisper or fallback | Ollama fallback | WAV fallback | TBD | TBD | TBD | TBD |

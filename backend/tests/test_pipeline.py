@@ -1,10 +1,30 @@
 import wave
+from types import SimpleNamespace
 
-from app.pipeline import generate_response, synthesize_speech, synthesize_with_piper, transcribe_audio
+from app.pipeline import (
+    generate_response,
+    synthesize_speech,
+    synthesize_with_piper,
+    transcribe_audio,
+    transcribe_with_faster_whisper,
+)
 
 
 def test_transcribe_audio_development_fallback() -> None:
     assert "3 bytes" in transcribe_audio(b"abc")
+
+
+def test_transcribe_audio_uses_faster_whisper_when_available(monkeypatch) -> None:
+    class FakeModel:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def transcribe(self, _path: str, beam_size: int) -> tuple[list[SimpleNamespace], object]:
+            return [SimpleNamespace(text=" hello "), SimpleNamespace(text="world")], object()
+
+    monkeypatch.setitem(__import__("sys").modules, "faster_whisper", SimpleNamespace(WhisperModel=FakeModel))
+
+    assert transcribe_with_faster_whisper(b"audio") == "hello world"
 
 
 def test_generate_response_handles_missing_ollama(monkeypatch) -> None:
