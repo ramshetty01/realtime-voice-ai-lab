@@ -3,6 +3,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.request
@@ -13,7 +14,32 @@ from pathlib import Path
 def transcribe_audio(audio: bytes) -> str:
     if text := os.getenv("ASR_TRANSCRIPT_TEXT"):
         return text
+    if transcript := transcribe_with_faster_whisper(audio):
+        return transcript
     return f"Received {len(audio)} bytes of audio. Configure local ASR to replace this development transcript."
+
+
+def transcribe_with_faster_whisper(audio: bytes) -> str:
+    try:
+        whisper_module = sys.modules.get("faster_whisper")
+        if whisper_module is None:
+            import faster_whisper as whisper_module  # type: ignore[import-not-found]
+    except ImportError:
+        return ""
+
+    with tempfile.NamedTemporaryFile(suffix=os.getenv("ASR_AUDIO_SUFFIX", ".webm")) as source:
+        source.write(audio)
+        source.flush()
+        try:
+            model = whisper_module.WhisperModel(
+                os.getenv("ASR_MODEL", "base"),
+                device=os.getenv("ASR_DEVICE", "cpu"),
+                compute_type=os.getenv("ASR_COMPUTE_TYPE", "int8"),
+            )
+            segments, _info = model.transcribe(source.name, beam_size=1)
+            return " ".join(segment.text.strip() for segment in segments).strip()
+        except Exception:
+            return ""
 
 
 def generate_response(transcript: str) -> str:
