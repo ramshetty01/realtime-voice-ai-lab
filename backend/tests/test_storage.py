@@ -9,6 +9,7 @@ def test_save_request_persists_trace(tmp_path) -> None:
             "status": "completed",
             "transcript": "hello",
             "assistant_response": "hi",
+            "audio_path": "recordings/req_test.webm",
             "asr_ms": 1,
             "llm_total_ms": 2,
             "tts_total_ms": 3,
@@ -26,4 +27,5 @@ def test_save_request_persists_trace(tmp_path) -> None:
 
     assert row == ("hello", 6, "tts")
     assert get_request("req_test", path=db_path)["assistant_response"] == "hi"
+    assert recent_requests(path=db_path)[0]["audio_path"] == "recordings/req_test.webm"
     assert recent_requests(path=db_path)[0]["request_id"] == "req_test"

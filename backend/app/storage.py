@@ -69,7 +69,7 @@ def recent_requests(limit: int = 20, path: Path = DB_PATH) -> list[dict[str, Any
         db.row_factory = sqlite3.Row
         rows = db.execute(
             """
-            select request_id, status, transcript, total_ms, slowest_stage, created_at
+            select request_id, status, transcript, total_ms, slowest_stage, audio_path, created_at
             from requests
             order by created_at desc
             limit ?

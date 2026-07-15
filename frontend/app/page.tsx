@@ -14,6 +14,7 @@ type RequestRow = {
   transcript?: string;
   total_ms?: number;
   slowest_stage?: string;
+  audio_path?: string;
   created_at: string;
 };
 
@@ -145,14 +146,18 @@ export default function Home() {
 
   async function replay(requestId: string, mode: "transcript" | "audio") {
     const endpoint = mode === "audio" ? "replay-audio" : "replay-transcript";
-    const response = await fetch(`${apiUrl}/requests/${requestId}/${endpoint}`, { method: "POST" });
-    if (!response.ok) {
+    const replayResponse = await fetch(`${apiUrl}/requests/${requestId}/${endpoint}`, { method: "POST" });
+    if (!replayResponse.ok) {
       setError(`${mode} replay is unavailable for this request.`);
       return;
     }
-    const payload = await response.json();
-    setEvents((payload.events ?? []).reverse());
+    const payload = await replayResponse.json();
+    const replayEvents = (payload.events ?? []) as VoiceEvent[];
+    setEvents([...replayEvents].reverse());
     setMetrics(payload.metrics ?? {});
+    setTranscript(replayEvents.find((event) => event.type === "transcript_completed")?.transcript ?? transcript);
+    setResponse(replayEvents.find((event) => event.type === "llm_completed")?.response ?? response);
+    setAudioUrl(replayEvents.find((event) => event.type === "tts_audio_ready")?.audio_url ?? "");
     void loadRequests();
   }
 
@@ -328,7 +333,7 @@ export default function Home() {
                       <button type="button" onClick={() => replay(request.request_id, "transcript")}>
                         Transcript
                       </button>
-                      <button type="button" onClick={() => replay(request.request_id, "audio")}>
+                      <button type="button" disabled={!request.audio_path} onClick={() => replay(request.request_id, "audio")}>
                         Audio
                       </button>
                     </td>

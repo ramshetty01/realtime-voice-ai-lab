@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.events import new_request_id, utc_timestamp, voice_event
 from app.logging import log_event
@@ -12,6 +13,13 @@ from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
 
 app = FastAPI(title="Realtime Voice AI Reliability Lab")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(","),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
