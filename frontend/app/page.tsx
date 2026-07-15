@@ -163,14 +163,23 @@ export default function Home() {
 
   const isRecording = status === "recording";
   const canStart = connection === "connected" && !isRecording && status !== "sending";
+  const totalMs = metrics?.total_ms ?? 0;
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <h1 className="title">Realtime Voice AI Reliability Lab</h1>
-        <div className={`status status-${connection}`} aria-label="Backend connection status">
-          <span className="status-dot" aria-hidden="true" />
-          Backend {connection}
+      <header className="topbar hero">
+        <div>
+          <p className="eyebrow">Local realtime voice pipeline</p>
+          <h1 className="title">Realtime Voice AI Reliability Lab</h1>
+        </div>
+        <div className="topbar-actions">
+          <div className={`status status-${connection}`} aria-label="Backend connection status">
+            <span className="status-dot" aria-hidden="true" />
+            Backend {connection}
+          </div>
+          <div className={`status status-${status}`} aria-label="Request status">
+            {status}
+          </div>
         </div>
       </header>
 
@@ -182,7 +191,7 @@ export default function Home() {
                 Voice Request
               </h2>
               <div className="controls">
-                <button className="primary" type="button" disabled={!canStart} onClick={startRecording}>
+                <button className="primary record-button" type="button" disabled={!canStart} onClick={startRecording}>
                   Start
                 </button>
                 <button type="button" disabled={!isRecording} onClick={stopRecording}>
@@ -191,16 +200,19 @@ export default function Home() {
               </div>
             </div>
             <div className="panel-body">
-              <div className="text-box">
-                <strong>Status:</strong> {status}
-                <br />
-                <strong>Audio:</strong> {audioInfo}
-                {error ? (
-                  <>
-                    <br />
-                    <strong>Error:</strong> {error}
-                  </>
-                ) : null}
+              <div className="voice-console">
+                <div className="meter" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="console-copy">
+                  <span className="label">Audio</span>
+                  <strong>{audioInfo}</strong>
+                  {error ? <p className="error-text">{error}</p> : null}
+                </div>
               </div>
             </div>
           </section>
@@ -212,7 +224,7 @@ export default function Home() {
               </h2>
             </div>
             <div className="panel-body">
-              <div className="text-box">{transcript}</div>
+              <div className="text-box transcript-box">{transcript}</div>
             </div>
           </section>
 
@@ -262,6 +274,7 @@ export default function Home() {
             <h2 className="panel-title" id="latency-title">
               Latency
             </h2>
+            <strong>{totalMs ? `${totalMs} ms` : "- ms"}</strong>
           </div>
           <div className="panel-body">
             <div className="metrics">
@@ -316,6 +329,7 @@ export default function Home() {
               <tr>
                 <th>Request</th>
                 <th>Status</th>
+                <th>Transcript</th>
                 <th>Total</th>
                 <th>Slowest</th>
                 <th>Replay</th>
@@ -327,6 +341,7 @@ export default function Home() {
                   <tr key={request.request_id}>
                     <td title={request.transcript}>{request.request_id}</td>
                     <td>{request.status}</td>
+                    <td className="truncate">{request.transcript ?? "-"}</td>
                     <td>{request.total_ms ?? "-"} ms</td>
                     <td>{request.slowest_stage ?? "-"}</td>
                     <td className="row-actions">
