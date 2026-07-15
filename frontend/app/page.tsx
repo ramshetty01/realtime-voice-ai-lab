@@ -167,12 +167,13 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <header className="topbar hero">
-        <div>
-          <p className="eyebrow">Local realtime voice pipeline</p>
-          <h1 className="title">Realtime Voice AI Reliability Lab</h1>
+      <header className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">Realtime Voice AI</p>
+          <h1 className="title">Reliability Lab</h1>
+          <p className="subtitle">Speak, inspect the pipeline, and replay traces from one local console.</p>
         </div>
-        <div className="topbar-actions">
+        <div className="hero-status">
           <div className={`status status-${connection}`} aria-label="Backend connection status">
             <span className="status-dot" aria-hidden="true" />
             Backend {connection}
@@ -183,75 +184,105 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="workspace" aria-label="Voice assistant workspace">
-        <div className="stack">
-          <section className="panel" aria-labelledby="controls-title">
+      <section className="console-grid" aria-label="Voice assistant workspace">
+        <aside className="recorder-card">
+          <div className="recorder-top">
+            <span className="label">Session</span>
+            <strong>{status}</strong>
+          </div>
+          <div className="orb" aria-hidden="true">
+            <div className="meter">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+          <div className="recorder-actions">
+            <button className="primary record-button" type="button" disabled={!canStart} onClick={startRecording}>
+              Start recording
+            </button>
+            <button type="button" disabled={!isRecording} onClick={stopRecording}>
+              Stop
+            </button>
+          </div>
+          <div className="audio-note">
+            <span className="label">Last audio</span>
+            <p>{audioInfo}</p>
+            {error ? <p className="error-text">{error}</p> : null}
+          </div>
+        </aside>
+
+        <section className="conversation-card" aria-label="Transcript and assistant response">
+          <div className="message-block user-block">
+            <div className="message-meta">
+              <span>You</span>
+              <span>Transcript</span>
+            </div>
+            <div className="message-body">{transcript}</div>
+          </div>
+
+          <div className="message-block assistant-block">
+            <div className="message-meta">
+              <span>Assistant</span>
+              <span>Response</span>
+            </div>
+            {audioUrl ? (
+              <audio className="player" controls src={audioUrl}>
+                <track kind="captions" />
+              </audio>
+            ) : null}
+            <div className="message-body">{response}</div>
+          </div>
+        </section>
+
+        <aside className="diagnostics" aria-label="Diagnostics">
+          <section className="panel compact-panel" aria-labelledby="latency-title">
             <div className="panel-header">
-              <h2 className="panel-title" id="controls-title">
-                Voice Request
-              </h2>
-              <div className="controls">
-                <button className="primary record-button" type="button" disabled={!canStart} onClick={startRecording}>
-                  Start
-                </button>
-                <button type="button" disabled={!isRecording} onClick={stopRecording}>
-                  Stop
-                </button>
+              <div>
+                <span className="label">Latency</span>
+                <h2 className="panel-title" id="latency-title">
+                  {totalMs ? `${totalMs} ms` : "- ms"}
+                </h2>
+              </div>
+              {metrics?.slowest_stage ? <span className="pill">Slowest: {metrics.slowest_stage}</span> : null}
+            </div>
+            <div className="panel-body">
+              <div className="metrics">
+                {stages.map((stage) => {
+                  const key =
+                    stage === "ASR"
+                      ? "asr_ms"
+                      : stage === "LLM"
+                        ? "llm_total_ms"
+                        : stage === "TTS"
+                          ? "tts_total_ms"
+                          : "total_ms";
+                  const value = metrics?.[key];
+                  const width = value && metrics?.total_ms ? Math.min(100, (value / metrics.total_ms) * 100) : 0;
+                  return (
+                    <div className="metric-row" key={stage}>
+                      <span>{stage}</span>
+                      <div className="bar" aria-hidden="true">
+                        <span style={{ width: `${width}%` }} />
+                      </div>
+                      <span>{value ?? "-"} ms</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-            <div className="panel-body">
-              <div className="voice-console">
-                <div className="meter" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className="console-copy">
-                  <span className="label">Audio</span>
-                  <strong>{audioInfo}</strong>
-                  {error ? <p className="error-text">{error}</p> : null}
-                </div>
-              </div>
-            </div>
           </section>
 
-          <section className="panel" aria-labelledby="transcript-title">
-            <div className="panel-header">
-              <h2 className="panel-title" id="transcript-title">
-                Transcript
-              </h2>
-            </div>
-            <div className="panel-body">
-              <div className="text-box transcript-box">{transcript}</div>
-            </div>
-          </section>
-
-          <section className="panel" aria-labelledby="response-title">
-            <div className="panel-header">
-              <h2 className="panel-title" id="response-title">
-                Assistant Response
-              </h2>
-            </div>
-            <div className="panel-body">
-              {audioUrl ? (
-                <audio className="player" controls src={audioUrl}>
-                  <track kind="captions" />
-                </audio>
-              ) : null}
-              <div className="text-box response-box">{response}</div>
-            </div>
-          </section>
-
-          <section className="panel" aria-labelledby="events-title">
+          <section className="panel compact-panel" aria-labelledby="events-title">
             <div className="panel-header">
               <h2 className="panel-title" id="events-title">
-                Backend Events
+                Event Stream
               </h2>
             </div>
             <div className="panel-body">
-              <div className="text-box event-log">
+              <div className="event-log">
                 {events.length ? (
                   events.map((event, index) => (
                     <div key={`${event.timestamp}-${index}`}>
@@ -267,57 +298,13 @@ export default function Home() {
               </div>
             </div>
           </section>
-        </div>
-
-        <aside className="panel" aria-labelledby="latency-title">
-          <div className="panel-header">
-            <h2 className="panel-title" id="latency-title">
-              Latency
-            </h2>
-            <strong>{totalMs ? `${totalMs} ms` : "- ms"}</strong>
-          </div>
-          <div className="panel-body">
-            <div className="metrics">
-              {stages.map((stage) => {
-                const key =
-                  stage === "ASR"
-                    ? "asr_ms"
-                    : stage === "LLM"
-                      ? "llm_total_ms"
-                      : stage === "TTS"
-                        ? "tts_total_ms"
-                        : "total_ms";
-                const value = metrics?.[key];
-                const width = value && metrics?.total_ms ? Math.min(100, (value / metrics.total_ms) * 100) : 0;
-                return (
-                  <div className="metric-row" key={stage}>
-                    <span>{stage}</span>
-                    <div className="bar" aria-hidden="true">
-                      <span style={{ width: `${width}%` }} />
-                    </div>
-                    <span>{value ?? "-"} ms</span>
-                  </div>
-                );
-              })}
-              {metrics?.total_ms ? (
-                <div className="metric-row total-row">
-                  <span>Total</span>
-                  <div className="bar" aria-hidden="true">
-                    <span style={{ width: "100%" }} />
-                  </div>
-                  <span>{metrics.total_ms} ms</span>
-                </div>
-              ) : null}
-              {metrics?.slowest_stage ? <p className="slowest">Slowest: {metrics.slowest_stage}</p> : null}
-            </div>
-          </div>
         </aside>
       </section>
 
-      <section className="requests panel" aria-labelledby="requests-title">
+      <section className="requests" aria-labelledby="requests-title">
         <div className="panel-header">
           <h2 className="panel-title" id="requests-title">
-            Recent Requests
+            Trace History
           </h2>
           <button type="button" onClick={loadRequests}>
             Refresh
@@ -356,7 +343,7 @@ export default function Home() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5}>No requests stored yet.</td>
+                  <td colSpan={6}>No requests stored yet.</td>
                 </tr>
               )}
             </tbody>
