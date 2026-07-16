@@ -122,7 +122,6 @@ export default function Home() {
         <div className="hero-copy">
           <p className="eyebrow">Realtime Voice AI</p>
           <h1 className="title">Voice Pipeline Lab</h1>
-          <p className="subtitle">Chat, record, and listen from one polished voice console.</p>
         </div>
         <div className="hero-status">
           <div className={`status status-${connection}`} aria-label="Backend connection status">
