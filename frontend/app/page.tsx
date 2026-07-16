@@ -6,6 +6,7 @@ import type { VoiceEvent } from "../src/lib/events";
 
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 
 type ChatMessage = {
   id: string;
@@ -33,12 +34,19 @@ export default function Home() {
     {
       id: newId(),
       role: "assistant",
-      text: "Ask me anything, or use the microphone to talk.",
+      text: welcomeMessage,
     },
   ]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
     setMessages((current) => current.map((message) => (message.id === id ? { ...message, ...patch } : message)));
+  }
+
+  function conversationHistory() {
+    return messages
+      .filter((message) => message.text.trim() && message.text !== welcomeMessage)
+      .slice(-8)
+      .map((message) => ({ role: message.role, content: message.text }));
   }
 
   function connectVoiceSocket() {
@@ -101,6 +109,7 @@ export default function Home() {
     if (!message) return;
 
     const assistantId = newId();
+    const history = conversationHistory();
     assistantIdRef.current = assistantId;
     setIsSubmitting(true);
     setVoiceStatus("thinking");
@@ -116,7 +125,7 @@ export default function Home() {
       const reply = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, history }),
       });
       if (!reply.ok) throw new Error("Chat request failed.");
       const payload = await reply.json();
@@ -188,6 +197,7 @@ export default function Home() {
         mime_type: audio.type,
         size: audio.size,
         duration_ms,
+        history: conversationHistory(),
       })
     );
     socket.send(await audio.arrayBuffer());

@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from app.pipeline import (
     generate_response,
     generate_with_nvidia_nim,
+    llm_history,
+    prompt_with_history,
     synthesize_speech,
     synthesize_with_piper,
     transcribe_audio,
@@ -48,6 +50,12 @@ def test_generate_response_uses_nvidia_nim_when_configured(monkeypatch) -> None:
         assert timeout == 30
         assert "chat/completions" in request.full_url
         assert request.headers["Authorization"] == "Bearer test-key"
+        payload = __import__("json").loads(request.data.decode())
+        assert payload["messages"] == [
+            {"role": "user", "content": "previous question"},
+            {"role": "assistant", "content": "previous answer"},
+            {"role": "user", "content": "hello"},
+        ]
         return FakeResponse()
 
     monkeypatch.setenv("NVIDIA_NIM_BASE_URL", "http://nim.test/v1")
@@ -55,7 +63,41 @@ def test_generate_response_uses_nvidia_nim_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-key")
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    assert generate_response("hello") == "nim response"
+    assert (
+        generate_response(
+            "hello",
+            [
+                {"role": "user", "content": "previous question"},
+                {"role": "assistant", "content": "previous answer"},
+            ],
+        )
+        == "nim response"
+    )
+
+
+def test_llm_history_keeps_recent_valid_turns() -> None:
+    history = [{"role": "user", "content": f"turn {index}"} for index in range(10)]
+    history.extend(
+        [
+            {"role": "system", "content": "ignore"},
+            {"role": "assistant", "content": "  final answer  "},
+            {"role": "user", "content": ""},
+        ]
+    )
+
+    messages = llm_history(history)
+
+    assert {"role": "system", "content": "ignore"} not in messages
+    assert messages[0] == {"role": "user", "content": "turn 5"}
+    assert messages[-1] == {"role": "assistant", "content": "final answer"}
+
+
+def test_prompt_with_history_formats_ollama_context() -> None:
+    prompt = prompt_with_history("continue", [{"role": "user", "content": "hello"}])
+
+    assert "Conversation so far:" in prompt
+    assert "user: hello" in prompt
+    assert prompt.endswith("User: continue\nAssistant:")
 
 
 def test_nvidia_nim_requires_configuration(monkeypatch) -> None:
