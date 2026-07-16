@@ -104,3 +104,5 @@ npm run build
 Demo checklist and portfolio copy are in [docs/DEMO.md](docs/DEMO.md).
 
 The full product spec is in [docs/PRD.md](docs/PRD.md).
+
+The lower-latency voice spike is in [docs/REALTIME_SPIKE.md](docs/REALTIME_SPIKE.md).
