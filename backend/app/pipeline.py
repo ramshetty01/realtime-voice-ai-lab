@@ -115,6 +115,8 @@ def prompt_with_history(transcript: str, history: list[dict[str, str]] | None) -
 def synthesize_speech(text: str) -> str:
     if audio := synthesize_with_piper(text):
         return audio
+    if audio := synthesize_with_macos_say(text):
+        return audio
     return wav_data_url(b"\x00\x00" * 1600)
 
 
@@ -137,6 +139,30 @@ def synthesize_with_piper(text: str) -> str:
             return ""
 
 
+def synthesize_with_macos_say(text: str) -> str:
+    say = os.getenv("MACOS_SAY_BIN", "say")
+    afconvert = os.getenv("AFCONVERT_BIN", "afconvert")
+    with tempfile.NamedTemporaryFile(suffix=".aiff") as source, tempfile.NamedTemporaryFile(suffix=".m4a") as output:
+        try:
+            subprocess.run(
+                [say, "-o", source.name, text],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            subprocess.run(
+                [afconvert, source.name, output.name, "-f", "m4af", "-d", "aac"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            return data_url(Path(output.name).read_bytes(), "audio/mp4")
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+
 def wav_data_url(frames: bytes) -> str:
     audio = io.BytesIO()
     with wave.open(audio, "wb") as wav:
@@ -147,6 +173,6 @@ def wav_data_url(frames: bytes) -> str:
     return data_url(audio.getvalue())
 
 
-def data_url(audio: bytes) -> str:
+def data_url(audio: bytes, mime_type: str = "audio/wav") -> str:
     encoded = base64.b64encode(audio).decode()
-    return f"data:audio/wav;base64,{encoded}"
+    return f"data:{mime_type};base64,{encoded}"

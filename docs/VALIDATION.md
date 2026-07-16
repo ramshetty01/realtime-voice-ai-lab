@@ -8,7 +8,7 @@ Last run: 2026-07-17
 backend/.venv/bin/pytest
 ```
 
-Result: 18 passed.
+Result: 20 passed.
 
 ```sh
 cd frontend
@@ -34,6 +34,10 @@ Result: frontend returned HTTP 200.
 - Typed chat route works and returns a playable audio URL.
 - Conversation history is sent to the backend for typed and voice turns.
 - Voice recording supports manual Stop and automatic silence stop.
+- ASR is installed in `backend/.venv` and transcribed generated speech as
+  `Hello world.` with the tiny model.
+- TTS generates real audio on this machine through macOS `say` and
+  `afconvert`.
 - Backend gracefully falls back when the configured LLM provider is unavailable.
 
 ## Current Blocker
@@ -48,3 +52,16 @@ The local NVIDIA NIM verification is not complete on this machine.
 To finish NIM validation, run the NIM container on a machine with an NVIDIA GPU
 runtime, map it to the configured NIM port, then retry `/chat`.
 
+Use this command for the current runtime check:
+
+```sh
+python scripts/verify_runtime.py
+```
+
+Current result:
+
+```txt
+nim: blocked - NIM HTTP 404
+asr: ok - faster-whisper import is available in backend/.venv
+tts: ok - macOS say + afconvert are available
+```
