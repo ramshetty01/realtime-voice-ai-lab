@@ -21,7 +21,7 @@ def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
     payload = asyncio.run(chat(ChatRequest(message="hello")))
     assert payload["transcript"] == "hello"
     assert payload["response"]
-    assert str(payload["audio_url"]).startswith("data:audio/wav;base64,")
+    assert str(payload["audio_url"]).startswith("data:audio/")
 
 
 def test_audio_size_limit_rejects_large_payload(monkeypatch) -> None:

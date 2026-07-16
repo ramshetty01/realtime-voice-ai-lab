@@ -9,6 +9,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+asr = [
+  "faster-whisper>=1.2",
+]
 dev = [
   "pytest>=8.0",
 ]

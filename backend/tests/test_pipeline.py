@@ -7,6 +7,7 @@ from app.pipeline import (
     llm_history,
     prompt_with_history,
     synthesize_speech,
+    synthesize_with_macos_say,
     synthesize_with_piper,
     transcribe_audio,
     transcribe_with_faster_whisper,
@@ -108,7 +109,8 @@ def test_nvidia_nim_requires_configuration(monkeypatch) -> None:
     assert generate_with_nvidia_nim("hello") == ""
 
 
-def test_synthesize_speech_returns_playable_wav_data_url() -> None:
+def test_synthesize_speech_returns_playable_wav_data_url(monkeypatch) -> None:
+    monkeypatch.setenv("MACOS_SAY_BIN", "/missing/say")
     audio_url = synthesize_speech("hello")
     assert audio_url.startswith("data:audio/wav;base64,")
     payload = audio_url.split(",", 1)[1]
@@ -123,3 +125,8 @@ def test_synthesize_speech_returns_playable_wav_data_url() -> None:
 def test_missing_piper_model_uses_fallback(monkeypatch) -> None:
     monkeypatch.setenv("PIPER_MODEL_PATH", "/missing/model.onnx")
     assert synthesize_with_piper("hello") == ""
+
+
+def test_missing_macos_say_uses_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("MACOS_SAY_BIN", "/missing/say")
+    assert synthesize_with_macos_say("hello") == ""
