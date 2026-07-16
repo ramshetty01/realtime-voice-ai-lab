@@ -112,6 +112,24 @@ npm run build
 
 Demo checklist and portfolio copy are in [docs/DEMO.md](docs/DEMO.md).
 
+Portfolio demo mode is local-only for now because the full voice loop depends
+on local model runtimes: NVIDIA NIM or Ollama for LLM, faster-whisper for ASR,
+and Piper for TTS. Run both services locally:
+
+```sh
+cd backend
+set -a; source ../.env; set +a
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+```sh
+cd frontend
+set -a; source ../.env; set +a
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+Then open http://127.0.0.1:3000.
+
 The full product spec is in [docs/PRD.md](docs/PRD.md).
 
 The lower-latency voice spike is in [docs/REALTIME_SPIKE.md](docs/REALTIME_SPIKE.md).
