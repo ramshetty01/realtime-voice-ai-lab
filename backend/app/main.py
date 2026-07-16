@@ -154,6 +154,20 @@ async def handle_audio(
         await websocket.send_json(event)
         return
 
+    max_audio_bytes = int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
+    if len(audio) > max_audio_bytes:
+        event = voice_event(
+            "request_failed",
+            request_id=request_id,
+            stage="audio_validation",
+            message="Recorded audio is too large for this demo.",
+            audio_size=len(audio),
+            max_audio_bytes=max_audio_bytes,
+        )
+        log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
+        await websocket.send_json(event)
+        return
+
     await websocket.send_json(
         voice_event(
             "stage_completed",

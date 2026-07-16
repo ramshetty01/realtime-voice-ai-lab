@@ -117,3 +117,5 @@ The full product spec is in [docs/PRD.md](docs/PRD.md).
 The lower-latency voice spike is in [docs/REALTIME_SPIKE.md](docs/REALTIME_SPIKE.md).
 
 Current local validation notes are in [docs/VALIDATION.md](docs/VALIDATION.md).
+
+Public demo safeguards are in [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md).
