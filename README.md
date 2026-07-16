@@ -57,8 +57,25 @@ docker compose up --build
 The app stays free by default:
 
 - ASR uses `faster-whisper` when installed; otherwise it falls back to `ASR_TRANSCRIPT_TEXT` or a development transcript.
-- LLM calls Ollama at `OLLAMA_BASE_URL`; if Ollama is unavailable, the app returns a clear fallback response.
+- LLM calls NVIDIA NIM when `NVIDIA_NIM_BASE_URL`, `NVIDIA_NIM_MODEL`, and `NVIDIA_NIM_API_KEY` or `NGC_API_KEY` are set. Otherwise it falls back to Ollama at `OLLAMA_BASE_URL`; if Ollama is unavailable, the app returns a clear fallback response.
 - TTS calls Piper when `PIPER_BIN` and `PIPER_MODEL_PATH` are valid; otherwise it returns a short playable WAV fallback.
+
+Optional local NVIDIA NIM:
+
+```sh
+export NGC_API_KEY=<PASTE_API_KEY_HERE>
+export LOCAL_NIM_CACHE=~/.cache/nim
+mkdir -p "$LOCAL_NIM_CACHE"
+chmod -R a+w "$LOCAL_NIM_CACHE"
+docker run -it --rm \
+  --gpus all \
+  --ipc host \
+  --shm-size=32GB \
+  -e NGC_API_KEY \
+  -v "$LOCAL_NIM_CACHE:/opt/nim/.cache" \
+  -p 8001:8000 \
+  nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:latest
+```
 
 Optional local ASR:
 

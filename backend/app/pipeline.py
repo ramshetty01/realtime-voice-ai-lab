@@ -43,6 +43,9 @@ def transcribe_with_faster_whisper(audio: bytes) -> str:
 
 
 def generate_response(transcript: str) -> str:
+    if response := generate_with_nvidia_nim(transcript):
+        return response
+
     payload = json.dumps(
         {"model": os.getenv("OLLAMA_MODEL", "llama3.2"), "prompt": transcript, "stream": False}
     ).encode()
@@ -57,6 +60,37 @@ def generate_response(transcript: str) -> str:
             return body.get("response") or "The local model returned an empty response."
     except (OSError, urllib.error.URLError, TimeoutError):
         return "Local Ollama is unavailable. Start Ollama to generate a model response."
+
+
+def generate_with_nvidia_nim(transcript: str) -> str:
+    base_url = os.getenv("NVIDIA_NIM_BASE_URL", "").rstrip("/")
+    model = os.getenv("NVIDIA_NIM_MODEL", "")
+    api_key = os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NGC_API_KEY", "")
+    if not base_url or not model or not api_key:
+        return ""
+
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": transcript}],
+            "temperature": 0.2,
+            "max_tokens": 512,
+        }
+    ).encode()
+    request = urllib.request.Request(
+        f"{base_url}/chat/completions",
+        data=payload,
+        headers={
+            "authorization": f"Bearer {api_key}",
+            "content-type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.loads(response.read().decode())
+            return body.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    except (OSError, urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError):
+        return ""
 
 
 def synthesize_speech(text: str) -> str:

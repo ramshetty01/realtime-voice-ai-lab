@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from app.pipeline import (
     generate_response,
+    generate_with_nvidia_nim,
     synthesize_speech,
     synthesize_with_piper,
     transcribe_audio,
@@ -30,6 +31,39 @@ def test_transcribe_audio_uses_faster_whisper_when_available(monkeypatch) -> Non
 def test_generate_response_handles_missing_ollama(monkeypatch) -> None:
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:1")
     assert "Ollama is unavailable" in generate_response("hello")
+
+
+def test_generate_response_uses_nvidia_nim_when_configured(monkeypatch) -> None:
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return b'{"choices":[{"message":{"content":"nim response"}}]}'
+
+    def fake_urlopen(request: object, timeout: int) -> FakeResponse:
+        assert timeout == 30
+        assert "chat/completions" in request.full_url
+        assert request.headers["Authorization"] == "Bearer test-key"
+        return FakeResponse()
+
+    monkeypatch.setenv("NVIDIA_NIM_BASE_URL", "http://nim.test/v1")
+    monkeypatch.setenv("NVIDIA_NIM_MODEL", "test-model")
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-key")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    assert generate_response("hello") == "nim response"
+
+
+def test_nvidia_nim_requires_configuration(monkeypatch) -> None:
+    monkeypatch.delenv("NVIDIA_NIM_BASE_URL", raising=False)
+    monkeypatch.delenv("NVIDIA_NIM_MODEL", raising=False)
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    assert generate_with_nvidia_nim("hello") == ""
 
 
 def test_synthesize_speech_returns_playable_wav_data_url() -> None:
