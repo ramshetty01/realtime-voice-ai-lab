@@ -119,3 +119,5 @@ The lower-latency voice spike is in [docs/REALTIME_SPIKE.md](docs/REALTIME_SPIKE
 Current local validation notes are in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 Public demo safeguards are in [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md).
+
+Local ASR/TTS setup notes are in [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md).
