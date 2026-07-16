@@ -6,22 +6,51 @@ import type { VoiceEvent } from "../src/lib/events";
 
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const welcomeMessage = "Ask me anything, or use the microphone to talk.";
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  audioUrl?: string;
+};
+
+const newId = () => Math.random().toString(36).slice(2);
 
 export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
-  const [mode, setMode] = useState<"chat" | "voice">("chat");
+  const assistantIdRef = useRef("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const silenceRafRef = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const silenceStartedAtRef = useRef(0);
   const [connection, setConnection] = useState("connecting");
-  const [voiceStatus, setVoiceStatus] = useState("Ready for audio");
+  const [voiceStatus, setVoiceStatus] = useState("ready");
   const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [transcript, setTranscript] = useState("What is the current latency budget for the voice assistant pipeline?");
-  const [response, setResponse] = useState(
-    "Total response time is 1.18 seconds. ASR took 310 ms, LLM took 520 ms, TTS took 240 ms, and orchestration overhead used the remaining budget."
-  );
   const [audioUrl, setAudioUrl] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: newId(),
+      role: "assistant",
+      text: welcomeMessage,
+    },
+  ]);
+
+  function updateMessage(id: string, patch: Partial<ChatMessage>) {
+    setMessages((current) => current.map((message) => (message.id === id ? { ...message, ...patch } : message)));
+  }
+
+  function conversationHistory() {
+    return messages
+      .filter((message) => message.text.trim() && message.text !== welcomeMessage)
+      .slice(-8)
+      .map((message) => ({ role: message.role, content: message.text }));
+  }
 
   function connectVoiceSocket() {
     const socket = new WebSocket(wsUrl);
@@ -33,14 +62,30 @@ export default function Home() {
     socket.addEventListener("message", (message) => {
       if (typeof message.data !== "string") return;
       const event = JSON.parse(message.data) as VoiceEvent;
-      if (event.type === "transcript_completed" && event.transcript) setTranscript(event.transcript);
-      if (event.type === "llm_token" && event.token) {
-        setResponse((current) => (current === "No response yet." ? event.token ?? "" : current + event.token));
+
+      if (event.type === "transcript_completed" && event.transcript) {
+        const assistantId = newId();
+        assistantIdRef.current = assistantId;
+        setVoiceStatus("thinking");
+        setMessages((current) => [
+          ...current,
+          { id: newId(), role: "user", text: event.transcript ?? "" },
+          { id: assistantId, role: "assistant", text: "" },
+        ]);
       }
-      if (event.type === "llm_completed" && event.response) setResponse(event.response);
-      if (event.type === "tts_audio_ready" && event.audio_url) setAudioUrl(event.audio_url);
-      if (event.type === "request_completed") setVoiceStatus("Response ready");
-      if (event.type === "request_failed") setVoiceStatus(event.message ?? "Voice request failed");
+      if (event.type === "llm_token" && event.token) {
+        const assistantId = assistantIdRef.current;
+        setMessages((current) =>
+          current.map((item) => (item.id === assistantId ? { ...item, text: item.text + event.token } : item))
+        );
+      }
+      if (event.type === "llm_completed" && event.response) updateMessage(assistantIdRef.current, { text: event.response });
+      if (event.type === "tts_audio_ready" && event.audio_url) {
+        setAudioUrl(event.audio_url);
+        updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
+      }
+      if (event.type === "request_completed") setVoiceStatus("ready");
+      if (event.type === "request_failed") setVoiceStatus(event.message ?? "failed");
     });
 
     return socket;
@@ -48,31 +93,54 @@ export default function Home() {
 
   useEffect(() => {
     const socket = connectVoiceSocket();
-    return () => socket.close();
+    return () => {
+      socket.close();
+      stopSilenceMonitor();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!audioUrl) return;
+    setVoiceStatus("speaking");
+    void audioRef.current?.play().catch(() => undefined);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight });
+  }, [messages]);
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = prompt.trim();
     if (!message) return;
 
+    const assistantId = newId();
+    const history = conversationHistory();
+    assistantIdRef.current = assistantId;
     setIsSubmitting(true);
-    setTranscript(message);
-    setResponse("Thinking...");
+    setVoiceStatus("thinking");
+    setPrompt("");
     setAudioUrl("");
+    setMessages((current) => [
+      ...current,
+      { id: newId(), role: "user", text: message },
+      { id: assistantId, role: "assistant", text: "Thinking..." },
+    ]);
+
     try {
       const reply = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, history }),
       });
       if (!reply.ok) throw new Error("Chat request failed.");
       const payload = await reply.json();
-      setResponse(payload.response ?? "");
+      updateMessage(assistantId, { text: payload.response ?? "", audioUrl: payload.audio_url ?? "" });
       setAudioUrl(payload.audio_url ?? "");
-      setPrompt("");
+      if (!payload.audio_url) setVoiceStatus("ready");
     } catch {
-      setResponse("The chat request failed. Check that the backend is running.");
+      updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running." });
+      setVoiceStatus("failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -80,8 +148,13 @@ export default function Home() {
 
   async function startRecording() {
     if (socketRef.current?.readyState !== WebSocket.OPEN) connectVoiceSocket();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setAudioUrl("");
     if (!navigator.mediaDevices?.getUserMedia) {
-      setVoiceStatus("Microphone is unavailable");
+      setVoiceStatus("microphone unavailable");
       return;
     }
     try {
@@ -94,19 +167,58 @@ export default function Home() {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       });
       recorder.addEventListener("stop", () => {
+        stopSilenceMonitor();
         stream.getTracks().forEach((track) => track.stop());
         void sendAudio();
       });
       recorder.start();
-      setVoiceStatus("Recording");
+      startSilenceMonitor(stream);
+      setVoiceStatus("recording");
     } catch {
-      setVoiceStatus("Microphone permission denied");
+      setVoiceStatus("microphone denied");
     }
   }
 
   function stopRecording() {
     recorderRef.current?.stop();
-    setVoiceStatus("Sending audio");
+    setVoiceStatus("sending");
+  }
+
+  function startSilenceMonitor(stream: MediaStream) {
+    const AudioContextCtor =
+      window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = new AudioContextCtor();
+    const analyser = context.createAnalyser();
+    const source = context.createMediaStreamSource(stream);
+    const samples = new Uint8Array(analyser.fftSize);
+    source.connect(analyser);
+    audioContextRef.current = context;
+    silenceStartedAtRef.current = 0;
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(samples);
+      const rms = Math.sqrt(samples.reduce((sum, value) => sum + (value - 128) ** 2, 0) / samples.length) / 128;
+      const now = performance.now();
+      if (rms > 0.025) silenceStartedAtRef.current = 0;
+      else if (now - startedAtRef.current > 800) silenceStartedAtRef.current ||= now;
+
+      if (silenceStartedAtRef.current && now - silenceStartedAtRef.current > 1200) {
+        if (recorderRef.current?.state === "recording") stopRecording();
+        return;
+      }
+      silenceRafRef.current = requestAnimationFrame(tick);
+    };
+
+    silenceRafRef.current = requestAnimationFrame(tick);
+  }
+
+  function stopSilenceMonitor() {
+    cancelAnimationFrame(silenceRafRef.current);
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    silenceStartedAtRef.current = 0;
   }
 
   async function sendAudio() {
@@ -114,16 +226,14 @@ export default function Home() {
     const audio = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType });
     const duration_ms = Math.round(performance.now() - startedAtRef.current);
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      setVoiceStatus("WebSocket disconnected");
+      setVoiceStatus("disconnected");
       return;
     }
     if (!audio.size) {
-      setVoiceStatus("Recorded audio was empty");
+      setVoiceStatus("empty audio");
       return;
     }
 
-    setTranscript("Transcribing...");
-    setResponse("Thinking...");
     setAudioUrl("");
     socket.send(
       JSON.stringify({
@@ -132,100 +242,56 @@ export default function Home() {
         mime_type: audio.type,
         size: audio.size,
         duration_ms,
+        history: conversationHistory(),
       })
     );
     socket.send(await audio.arrayBuffer());
   }
 
-  const isRecording = voiceStatus === "Recording";
-  const canRecord = !isRecording && voiceStatus !== "Sending audio";
+  const isRecording = voiceStatus === "recording";
+  const canRecord = connection === "connected" && !isRecording && voiceStatus !== "sending";
 
   return (
     <main className="shell">
-      <header className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Realtime Voice AI</p>
-          <h1 className="title">Voice Pipeline Lab</h1>
-        </div>
-      </header>
-
-      <section className="console-grid" aria-label="Voice assistant workspace">
-        <section className="conversation-card" aria-label="Transcript and assistant response">
-          <div className="mode-toggle" aria-label="Conversation mode">
-            <button className={mode === "chat" ? "active-mode" : ""} type="button" onClick={() => setMode("chat")}>
-              Chat
-            </button>
-            <button className={mode === "voice" ? "active-mode" : ""} type="button" onClick={() => setMode("voice")}>
-              Voice
-            </button>
+      <section className="chat-app" aria-label="AI conversation">
+        <header className="chat-header">
+          <div>
+            <p className="eyebrow">Realtime Voice AI</p>
+            <h1 className="title">Voice Pipeline Lab</h1>
           </div>
+          <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
+        </header>
 
-          {mode === "chat" ? (
-            <>
-              <div className="message-block user-block">
-                <div className="message-meta">
-                  <span>You</span>
-                  <span>Transcript</span>
-                </div>
-                <div className="message-body">{transcript}</div>
-              </div>
-
-              <div className="message-block assistant-block">
-                <div className="message-meta">
-                  <span>Assistant</span>
-                  <span>Response</span>
-                </div>
-                {audioUrl ? (
-                  <audio className="player" controls src={audioUrl}>
-                    <track kind="captions" />
-                  </audio>
-                ) : null}
-                <div className="message-body">{response}</div>
-              </div>
-              <form className="prompt-bar" onSubmit={submitChat}>
-                <input
-                  aria-label="Chat prompt"
-                  disabled={isSubmitting}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="Ask anything and keep the conversation flowing..."
-                  value={prompt}
-                />
-                <button type="submit" disabled={isSubmitting || !prompt.trim()}>
-                  Send
-                </button>
-              </form>
-            </>
-          ) : (
-            <div className="voice-panel" aria-label="Voice workspace">
-              <div className="voice-wave" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="voice-copy">
-                <span>Voice mode</span>
-                <strong>{voiceStatus}</strong>
-              </div>
-              {audioUrl ? (
-                <audio className="player" controls src={audioUrl}>
+        <div className="message-list" aria-live="polite" ref={messageListRef}>
+          {messages.map((message) => (
+            <article className={`message ${message.role}`} key={message.id}>
+              <div className="message-label">{message.role === "user" ? "You" : "AI"}</div>
+              <div className="message-text">{message.text}</div>
+              {message.audioUrl ? (
+                <audio className="player" controls src={message.audioUrl}>
                   <track kind="captions" />
                 </audio>
               ) : null}
-              <div className="voice-actions">
-                <button type="button" disabled={!canRecord} onClick={startRecording}>
-                  Record
-                </button>
-                <button type="button" disabled={!isRecording} onClick={stopRecording}>
-                  Send
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
+            </article>
+          ))}
+        </div>
+
+        <form className="composer" onSubmit={submitChat}>
+          <button className="mic-button" type="button" disabled={!canRecord && !isRecording} onClick={isRecording ? stopRecording : startRecording}>
+            {isRecording ? "Stop" : "Voice"}
+          </button>
+          <input
+            aria-label="Message"
+            disabled={isSubmitting}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Message the AI..."
+            value={prompt}
+          />
+          <button type="submit" disabled={isSubmitting || !prompt.trim()}>
+            Send
+          </button>
+        </form>
+        {audioUrl ? <audio ref={audioRef} src={audioUrl} onEnded={() => setVoiceStatus("ready")} /> : null}
       </section>
     </main>
   );

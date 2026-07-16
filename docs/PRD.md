@@ -107,6 +107,20 @@ A reviewer should be able to answer these questions within a few minutes:
 
 ## 8. User Stories
 
+### 8.0 Text Conversation
+
+As a user, I want to type a message and get an AI answer in the same
+conversation thread so that the app works even when microphone access is not
+available.
+
+Acceptance criteria:
+
+- User can send a typed message.
+- Backend sends the message to the configured LLM provider.
+- Assistant response appears in the chat thread.
+- Recent conversation history is sent with follow-up turns.
+- Generated assistant audio is playable when TTS succeeds.
+
 ### 8.1 Voice Conversation
 
 As a user, I want to speak into the browser and hear an AI response so that I can test a complete voice assistant loop.
@@ -114,7 +128,8 @@ As a user, I want to speak into the browser and hear an AI response so that I ca
 Acceptance criteria:
 
 - User can start recording.
-- User can stop recording.
+- User can stop recording manually.
+- Recording can stop automatically after sustained silence.
 - Browser sends non-empty audio to the backend.
 - Backend returns transcript text.
 - Backend returns assistant text.
@@ -175,7 +190,7 @@ Browser mic
   -> local TTS
   -> browser playback
   -> persisted trace
-  -> latency dashboard
+  -> chat console
 ```
 
 Minimum usable demo:
@@ -187,8 +202,8 @@ Minimum usable demo:
 - one local LLM adapter
 - one local TTS adapter
 - SQLite request trace storage
-- latest-request latency display
-- recent requests table
+- chat-style conversation thread
+- backend latency metrics available through API traces
 - transcript replay
 
 ## 10. Recommended Free Stack
@@ -199,7 +214,7 @@ Minimum usable demo:
 | Backend | FastAPI | Small async API surface, good WebSocket support |
 | Realtime | WebSocket | Native browser support, simple bidirectional events |
 | ASR | faster-whisper | Free local transcription with practical quality |
-| LLM | Ollama | Local LLM runtime with simple HTTP API |
+| LLM | NVIDIA NIM, then Ollama fallback | NIM-backed reasoning when configured, local fallback when unavailable |
 | TTS | Piper | Free local speech synthesis |
 | Storage | SQLite | Enough for local traces and replay |
 | Logging | JSON logs | Simple, inspectable, production-like |
@@ -217,7 +232,7 @@ Paid services may be added later as optional adapters, not default requirements.
 │ - transcript        │
 │ - response text     │
 │ - audio playback    │
-│ - latency dashboard │
+│ - chat thread       │
 └─────────┬──────────┘
           │ WebSocket events + audio payload
 ┌─────────▼──────────┐
@@ -231,7 +246,7 @@ Paid services may be added later as optional adapters, not default requirements.
      │        │
 ┌────▼───┐ ┌──▼──────┐ ┌────────┐
 │ ASR    │ │ LLM     │ │ TTS    │
-│ local  │ │ Ollama  │ │ Piper  │
+│ local  │ │ NIM/Ollama│ │ Piper  │
 └────────┘ └─────────┘ └────────┘
           │
 ┌─────────▼──────────┐
@@ -258,7 +273,7 @@ Paid services may be added later as optional adapters, not default requirements.
 12. Backend returns audio to browser.
 13. Browser plays audio.
 14. Backend stores trace and metrics.
-15. UI updates latency dashboard.
+15. UI updates the chat thread and stores latency metrics for inspection.
 
 ## 13. Functional Requirements
 
@@ -267,6 +282,8 @@ Paid services may be added later as optional adapters, not default requirements.
 - Must request microphone permission only when the user starts recording.
 - Must show permission-denied errors clearly.
 - Must support start and stop recording.
+- Must stop recording automatically after sustained silence.
+- Must support typed chat through `POST /chat`.
 - Must prevent starting a second request while one is active.
 - Must send audio MIME type, size, and duration if available.
 - Must display current request state.
@@ -274,8 +291,7 @@ Paid services may be added later as optional adapters, not default requirements.
 - Must display assistant response text.
 - Must play assistant audio when available.
 - Must keep text response visible if audio playback fails.
-- Must show latest latency metrics.
-- Must show recent request history.
+- Must keep user and assistant turns in one conversation thread.
 
 ### 13.2 Backend API
 
@@ -300,7 +316,7 @@ Paid services may be added later as optional adapters, not default requirements.
 
 ### 13.4 LLM
 
-- Must call a local Ollama model by default.
+- Must call NVIDIA NIM when configured, then fall back to Ollama.
 - Must support configurable model name.
 - Must send transcript as the user message.
 - Must stream tokens if supported.
@@ -319,14 +335,14 @@ Paid services may be added later as optional adapters, not default requirements.
 - Must enforce timeout.
 - Must preserve text output when audio fails.
 
-### 13.6 Latency Dashboard
+### 13.6 Latency Traces
 
-- Must display latest request metrics.
-- Must display total response time.
-- Must display stage durations.
-- Must highlight the slowest measured stage.
-- Must show failed stages distinctly.
-- Should include a compact recent request table.
+- Must store latest request metrics.
+- Must store total response time.
+- Must store stage durations.
+- Must identify the slowest measured stage.
+- Must preserve failed stages distinctly.
+- Should expose recent request traces through the API.
 
 ### 13.7 Replay
 
@@ -607,7 +623,7 @@ Manual demo checks:
 - normal voice request
 - local LLM unavailable path
 - TTS unavailable path
-- latency dashboard after completion
+- chat thread after completion
 - replay from transcript
 
 ## 24. Milestones
@@ -661,7 +677,7 @@ Acceptance criteria:
 - README explains the project and setup.
 - Architecture diagram is included.
 - Demo checklist is included.
-- Screenshots show app, request history, and latency dashboard.
+- Screenshots show typed chat, voice state, transcript, and audio playback.
 - Benchmark table documents local performance.
 
 ## 25. Issue Plan
@@ -671,7 +687,7 @@ The project is split into 30 implementation issues:
 | Phase | Focus |
 |---|---|
 | Phase 1 | app shell, WebSocket pipeline, ASR, LLM, TTS |
-| Phase 2 | SQLite traces, latency helper, dashboard, request history, logs |
+| Phase 2 | SQLite traces, latency helper, API request history, logs |
 | Phase 3 | ASR/LLM/TTS timeout and fallback behavior |
 | Phase 4 | transcript and optional audio replay |
 | Phase 5 | Docker, README, portfolio evidence |
@@ -685,7 +701,7 @@ Project success:
 - End-to-end voice response works locally.
 - A reviewer can run the project from the README.
 - Every request has a trace.
-- Latency breakdown is visible per request.
+- Latency breakdown is available in API traces.
 - At least three failure modes are demonstrated.
 - Transcript replay works.
 - Portfolio README includes screenshots or a demo checklist.
@@ -740,24 +756,23 @@ Strong portfolio claim:
 ## 30. Demo Script
 
 1. Open the app.
-2. Start recording.
-3. Ask a short question.
-4. Stop recording.
-5. Show transcript.
-6. Show streamed or completed assistant response.
+2. Send a typed question.
+3. Show the assistant response in the chat thread.
+4. Click Voice and ask a short question.
+5. Let silence detection stop the turn, or stop it manually.
+6. Show transcript and assistant response in the same thread.
 7. Play audio response.
-8. Point to latency dashboard.
-9. Show recent request trace.
-10. Replay the transcript.
-11. Trigger one failure mode, such as local TTS unavailable.
-12. Show graceful fallback and stored failed/degraded trace.
+8. Point to backend latency traces in the API.
+9. Replay a transcript through the API.
+10. Trigger one failure mode, such as local TTS unavailable.
+11. Show graceful fallback and stored failed/degraded trace.
 
 ## 31. Open Decisions
 
 These should be finalized during implementation:
 
 - Choose `faster-whisper` or `whisper.cpp` as the first ASR backend.
-- Choose default Ollama model based on local machine performance.
+- Choose default Ollama fallback model based on local machine performance.
 - Choose whether audio upload uses binary WebSocket frames or short-lived HTTP upload plus WebSocket events.
 - Choose whether generated TTS audio is sent as bytes or served by temporary local URL.
 

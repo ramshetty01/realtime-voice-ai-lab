@@ -25,6 +25,7 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
+    history: list[dict[str, str]] = Field(default_factory=list)
 
 
 @app.get("/health")
@@ -51,7 +52,7 @@ def request_detail(request_id: str) -> dict[str, object]:
 
 @app.post("/chat")
 async def chat(payload: ChatRequest) -> dict[str, object]:
-    result = await run_text_pipeline(payload.message)
+    result = await run_text_pipeline(payload.message, history=payload.history)
     response = next((event.get("response") for event in result["events"] if event["type"] == "llm_completed"), "")
     audio_url = next((event.get("audio_url") for event in result["events"] if event["type"] == "tts_audio_ready"), "")
     return {
@@ -130,10 +131,12 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
     if payload.get("type") != "client_audio_ready":
         return {}
 
+    history = payload.get("history")
     return {
         "mime_type": payload.get("mime_type"),
         "size": payload.get("size"),
         "duration_ms": payload.get("duration_ms"),
+        "history": history if isinstance(history, list) else [],
     }
 
 
@@ -146,6 +149,20 @@ async def handle_audio(
             request_id=request_id,
             stage="audio_validation",
             message="Recorded audio was empty.",
+        )
+        log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
+        await websocket.send_json(event)
+        return
+
+    max_audio_bytes = int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
+    if len(audio) > max_audio_bytes:
+        event = voice_event(
+            "request_failed",
+            request_id=request_id,
+            stage="audio_validation",
+            message="Recorded audio is too large for this demo.",
+            audio_size=len(audio),
+            max_audio_bytes=max_audio_bytes,
         )
         log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
         await websocket.send_json(event)
@@ -209,6 +226,7 @@ async def run_voice_pipeline(
         replay_of=replay_of,
         audio_path=audio_path,
         asr_ms=asr_ms,
+        history=metadata.get("history") if isinstance(metadata.get("history"), list) else None,
     )
     return {"events": events + text_result["events"], "metrics": text_result["metrics"]}
 
@@ -220,6 +238,7 @@ async def run_text_pipeline(
     replay_of: str | None = None,
     audio_path: str | None = None,
     asr_ms: int | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     request_id = request_id or new_request_id()
     total = total or Timer()
@@ -229,7 +248,7 @@ async def run_text_pipeline(
     events.append(voice_event("stage_started", request_id=request_id, stage="llm"))
     try:
         assistant_response = await asyncio.wait_for(
-            asyncio.to_thread(generate_response, transcript),
+            asyncio.to_thread(generate_response, transcript, history),
             timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "45")),
         )
     except TimeoutError:
