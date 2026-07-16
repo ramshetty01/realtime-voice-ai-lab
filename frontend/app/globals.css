@@ -66,10 +66,6 @@ button:disabled {
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: center;
   padding: 26px 30px;
   border: 1px solid rgba(244, 244, 238, 0.08);
   background: var(--panel);
@@ -95,48 +91,6 @@ button:disabled {
   letter-spacing: 0;
   line-height: 0.95;
   text-transform: uppercase;
-}
-
-.hero-status {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 13px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  backdrop-filter: blur(18px);
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--orange);
-}
-
-.status-connected .status-dot {
-  background: var(--green);
-}
-
-.status-recording,
-.status-completed {
-  color: var(--green);
-}
-
-.status-failed,
-.status-error {
-  color: var(--orange);
 }
 
 .console-grid {
@@ -282,17 +236,11 @@ button:disabled {
   }
 
   .hero {
-    grid-template-columns: 1fr;
-    align-items: start;
     padding: 20px;
   }
 
   .title {
     font-size: 40px;
-  }
-
-  .hero-status {
-    justify-content: flex-start;
   }
 
   .conversation-card {
