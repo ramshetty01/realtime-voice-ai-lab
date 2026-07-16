@@ -4,53 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { VoiceEvent } from "../src/lib/events";
 
-const stages = ["ASR", "LLM", "TTS", "Overhead"];
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-
-type RequestRow = {
-  request_id: string;
-  status: string;
-  transcript?: string;
-  total_ms?: number;
-  slowest_stage?: string;
-  audio_path?: string;
-  created_at: string;
-};
-
-const demoMetrics = { asr_ms: 310, llm_total_ms: 520, tts_total_ms: 240, total_ms: 1180, slowest_stage: "llm" };
-const demoEvents: VoiceEvent[] = [
-  { type: "request_completed", timestamp: "2026-07-15T11:00:04Z", request_id: "demo_voice_003", metrics: demoMetrics },
-  { type: "tts_audio_ready", timestamp: "2026-07-15T11:00:03Z", request_id: "demo_voice_003", stage: "tts" },
-  { type: "llm_completed", timestamp: "2026-07-15T11:00:02Z", request_id: "demo_voice_003", stage: "llm" },
-  { type: "transcript_completed", timestamp: "2026-07-15T11:00:01Z", request_id: "demo_voice_003", stage: "asr" },
-];
-const demoRequests: RequestRow[] = [
-  {
-    request_id: "demo_voice_003",
-    status: "completed",
-    transcript: "What is the current latency budget for the voice assistant pipeline?",
-    total_ms: 1180,
-    slowest_stage: "llm",
-    created_at: "2026-07-15T11:00:04Z",
-  },
-  {
-    request_id: "demo_vision_002",
-    status: "completed",
-    transcript: "Summarize the detected objects and explain the risk level.",
-    total_ms: 940,
-    slowest_stage: "asr",
-    created_at: "2026-07-15T10:56:12Z",
-  },
-  {
-    request_id: "demo_logs_001",
-    status: "failed",
-    transcript: "Why did checkout latency spike after the deploy?",
-    total_ms: 1560,
-    slowest_stage: "tts",
-    created_at: "2026-07-15T10:51:40Z",
-  },
-];
 
 export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
@@ -60,15 +14,12 @@ export default function Home() {
   const [connection, setConnection] = useState("connecting");
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
-  const [events, setEvents] = useState<VoiceEvent[]>([]);
   const [audioInfo, setAudioInfo] = useState("demo/webm · 184320 bytes · 3200 ms");
   const [transcript, setTranscript] = useState("What is the current latency budget for the voice assistant pipeline?");
   const [response, setResponse] = useState(
     "Total response time is 1.18 seconds. ASR took 310 ms, LLM took 520 ms, TTS took 240 ms, and orchestration overhead used the remaining budget."
   );
   const [audioUrl, setAudioUrl] = useState("");
-  const [metrics, setMetrics] = useState<VoiceEvent["metrics"]>(demoMetrics);
-  const [requests, setRequests] = useState<RequestRow[]>([]);
 
   useEffect(() => {
     const socket = new WebSocket(wsUrl);
@@ -83,37 +34,21 @@ export default function Home() {
     socket.addEventListener("message", (message) => {
       if (typeof message.data !== "string") return;
       const event = JSON.parse(message.data) as VoiceEvent;
-      setEvents((current) => [event, ...current].slice(0, 8));
       if (event.type === "transcript_completed" && event.transcript) setTranscript(event.transcript);
       if (event.type === "llm_token" && event.token) {
         setResponse((current) => (current === "No response yet." ? event.token ?? "" : current + event.token));
       }
       if (event.type === "llm_completed" && event.response) setResponse(event.response);
       if (event.type === "tts_audio_ready" && event.audio_url) setAudioUrl(event.audio_url);
-      if (event.type === "request_completed") {
-        setStatus("completed");
-        setMetrics(event.metrics ?? {});
-        void loadRequests();
-      }
+      if (event.type === "request_completed") setStatus("completed");
       if (event.type === "request_failed") {
         setStatus("failed");
         setError(event.message ?? "Request failed.");
       }
     });
 
-    void loadRequests();
     return () => socket.close();
   }, []);
-
-  async function loadRequests() {
-    try {
-      const response = await fetch(`${apiUrl}/requests?limit=8`);
-      const payload = (await response.json()) as { requests: RequestRow[] };
-      setRequests(payload.requests);
-    } catch {
-      setRequests([]);
-    }
-  }
 
   async function startRecording() {
     setError("");
@@ -177,39 +112,17 @@ export default function Home() {
     setTranscript("Transcribing...");
     setResponse("No response yet.");
     setAudioUrl("");
-    setMetrics({});
-  }
-
-  async function replay(requestId: string, mode: "transcript" | "audio") {
-    const endpoint = mode === "audio" ? "replay-audio" : "replay-transcript";
-    const replayResponse = await fetch(`${apiUrl}/requests/${requestId}/${endpoint}`, { method: "POST" });
-    if (!replayResponse.ok) {
-      setError(`${mode} replay is unavailable for this request.`);
-      return;
-    }
-    const payload = await replayResponse.json();
-    const replayEvents = (payload.events ?? []) as VoiceEvent[];
-    setEvents([...replayEvents].reverse());
-    setMetrics(payload.metrics ?? {});
-    setTranscript(replayEvents.find((event) => event.type === "transcript_completed")?.transcript ?? transcript);
-    setResponse(replayEvents.find((event) => event.type === "llm_completed")?.response ?? response);
-    setAudioUrl(replayEvents.find((event) => event.type === "tts_audio_ready")?.audio_url ?? "");
-    void loadRequests();
   }
 
   const isRecording = status === "recording";
   const canStart = connection === "connected" && !isRecording && status !== "sending";
-  const totalMs = metrics?.total_ms ?? 0;
-  const displayEvents = events.length ? events : demoEvents;
-  const displayRequests = requests.length ? requests : demoRequests;
-
   return (
     <main className="shell">
       <header className="hero">
         <div className="hero-copy">
           <p className="eyebrow">Realtime Voice AI</p>
           <h1 className="title">Voice Pipeline Lab</h1>
-          <p className="subtitle">Chat, record, replay, and inspect latency from one polished voice console.</p>
+          <p className="subtitle">Chat, record, and listen from one polished voice console.</p>
         </div>
         <div className="hero-status">
           <div className={`status status-${connection}`} aria-label="Backend connection status">
@@ -282,128 +195,9 @@ export default function Home() {
             <div className="message-body">{response}</div>
           </div>
           <div className="prompt-bar">
-            <span>Ask about latency, failures, or replay traces...</span>
-            <button type="button" onClick={loadRequests}>
-              Refresh
-            </button>
+            <span>Ask anything and keep the conversation flowing...</span>
           </div>
         </section>
-
-        <aside className="diagnostics" aria-label="Diagnostics">
-          <section className="panel compact-panel" aria-labelledby="latency-title">
-            <div className="panel-header">
-              <div>
-                <span className="label">Latency</span>
-                <h2 className="panel-title" id="latency-title">
-                  {totalMs ? `${totalMs} ms` : "- ms"}
-                </h2>
-              </div>
-              {metrics?.slowest_stage ? <span className="pill">Slowest: {metrics.slowest_stage}</span> : null}
-            </div>
-            <div className="panel-body">
-              <div className="metrics">
-                {stages.map((stage) => {
-                  const key =
-                    stage === "ASR"
-                      ? "asr_ms"
-                      : stage === "LLM"
-                        ? "llm_total_ms"
-                        : stage === "TTS"
-                          ? "tts_total_ms"
-                          : "total_ms";
-                  const value = metrics?.[key];
-                  const width = value && metrics?.total_ms ? Math.min(100, (value / metrics.total_ms) * 100) : 0;
-                  return (
-                    <div className="metric-row" key={stage}>
-                      <span>{stage}</span>
-                      <div className="bar" aria-hidden="true">
-                        <span style={{ width: `${width}%` }} />
-                      </div>
-                      <span>{value ?? "-"} ms</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          <section className="panel compact-panel" aria-labelledby="events-title">
-            <div className="panel-header">
-              <h2 className="panel-title" id="events-title">
-                Event Stream
-              </h2>
-            </div>
-            <div className="panel-body">
-              <div className="event-log">
-                {displayEvents.length ? (
-                  displayEvents.map((event, index) => (
-                    <div key={`${event.timestamp}-${index}`}>
-                      {event.type}
-                      {event.request_id ? ` · ${event.request_id}` : ""}
-                      {event.stage ? ` · ${event.stage}` : ""}
-                      {event.message ? ` · ${event.message}` : ""}
-                    </div>
-                  ))
-                ) : (
-                  "No backend events yet."
-                )}
-              </div>
-            </div>
-          </section>
-        </aside>
-      </section>
-
-      <section className="requests" aria-labelledby="requests-title">
-        <div className="panel-header">
-          <h2 className="panel-title" id="requests-title">
-            Trace History
-          </h2>
-          <button type="button" onClick={loadRequests}>
-            Refresh
-          </button>
-        </div>
-        <div className="panel-body table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Request</th>
-                <th>Status</th>
-                <th>Transcript</th>
-                <th>Total</th>
-                <th>Slowest</th>
-                <th>Replay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayRequests.length ? (
-                displayRequests.map((request) => {
-                  const isDemo = request.request_id.startsWith("demo_");
-                  return (
-                    <tr key={request.request_id}>
-                      <td title={request.transcript}>{request.request_id}</td>
-                      <td>{request.status}</td>
-                      <td className="truncate">{request.transcript ?? "-"}</td>
-                      <td>{request.total_ms ?? "-"} ms</td>
-                      <td>{request.slowest_stage ?? "-"}</td>
-                      <td className="row-actions">
-                        <button type="button" disabled={isDemo} onClick={() => replay(request.request_id, "transcript")}>
-                          Transcript
-                        </button>
-                        <button type="button" disabled={isDemo || !request.audio_path} onClick={() => replay(request.request_id, "audio")}>
-                          Audio
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={6}>No requests stored yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </section>
     </main>
   );
