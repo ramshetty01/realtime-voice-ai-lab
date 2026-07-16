@@ -23,7 +23,7 @@ export default function Home() {
   );
   const [audioUrl, setAudioUrl] = useState("");
 
-  useEffect(() => {
+  function connectVoiceSocket() {
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
@@ -43,6 +43,11 @@ export default function Home() {
       if (event.type === "request_failed") setVoiceStatus(event.message ?? "Voice request failed");
     });
 
+    return socket;
+  }
+
+  useEffect(() => {
+    const socket = connectVoiceSocket();
     return () => socket.close();
   }, []);
 
@@ -74,6 +79,7 @@ export default function Home() {
   }
 
   async function startRecording() {
+    if (socketRef.current?.readyState !== WebSocket.OPEN) connectVoiceSocket();
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceStatus("Microphone is unavailable");
       return;
@@ -132,7 +138,7 @@ export default function Home() {
   }
 
   const isRecording = voiceStatus === "Recording";
-  const canRecord = connection === "connected" && !isRecording && voiceStatus !== "Sending audio";
+  const canRecord = !isRecording && voiceStatus !== "Sending audio";
 
   return (
     <main className="shell">
