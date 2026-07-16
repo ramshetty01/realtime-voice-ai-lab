@@ -7,6 +7,7 @@ import type { VoiceEvent } from "../src/lib/events";
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 
 export default function Home() {
+  const [mode, setMode] = useState<"chat" | "voice">("chat");
   const [transcript, setTranscript] = useState("What is the current latency budget for the voice assistant pipeline?");
   const [response, setResponse] = useState(
     "Total response time is 1.18 seconds. ASR took 310 ms, LLM took 520 ms, TTS took 240 ms, and orchestration overhead used the remaining budget."
@@ -41,32 +42,65 @@ export default function Home() {
       <section className="console-grid" aria-label="Voice assistant workspace">
         <section className="conversation-card" aria-label="Transcript and assistant response">
           <div className="mode-toggle" aria-label="Conversation mode">
-            <span className="active-mode">Chat</span>
-            <span>Voice</span>
-          </div>
-          <div className="message-block user-block">
-            <div className="message-meta">
-              <span>You</span>
-              <span>Transcript</span>
-            </div>
-            <div className="message-body">{transcript}</div>
+            <button className={mode === "chat" ? "active-mode" : ""} type="button" onClick={() => setMode("chat")}>
+              Chat
+            </button>
+            <button className={mode === "voice" ? "active-mode" : ""} type="button" onClick={() => setMode("voice")}>
+              Voice
+            </button>
           </div>
 
-          <div className="message-block assistant-block">
-            <div className="message-meta">
-              <span>Assistant</span>
-              <span>Response</span>
+          {mode === "chat" ? (
+            <>
+              <div className="message-block user-block">
+                <div className="message-meta">
+                  <span>You</span>
+                  <span>Transcript</span>
+                </div>
+                <div className="message-body">{transcript}</div>
+              </div>
+
+              <div className="message-block assistant-block">
+                <div className="message-meta">
+                  <span>Assistant</span>
+                  <span>Response</span>
+                </div>
+                {audioUrl ? (
+                  <audio className="player" controls src={audioUrl}>
+                    <track kind="captions" />
+                  </audio>
+                ) : null}
+                <div className="message-body">{response}</div>
+              </div>
+              <div className="prompt-bar">
+                <span>Ask anything and keep the conversation flowing...</span>
+              </div>
+            </>
+          ) : (
+            <div className="voice-panel" aria-label="Voice workspace">
+              <div className="voice-wave" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="voice-copy">
+                <span>Voice mode</span>
+                <strong>Ready for audio</strong>
+              </div>
+              {audioUrl ? (
+                <audio className="player" controls src={audioUrl}>
+                  <track kind="captions" />
+                </audio>
+              ) : null}
+              <div className="prompt-bar">
+                <span>Speak, stream, and listen for the assistant response...</span>
+              </div>
             </div>
-            {audioUrl ? (
-              <audio className="player" controls src={audioUrl}>
-                <track kind="captions" />
-              </audio>
-            ) : null}
-            <div className="message-body">{response}</div>
-          </div>
-          <div className="prompt-bar">
-            <span>Ask anything and keep the conversation flowing...</span>
-          </div>
+          )}
         </section>
       </section>
     </main>
