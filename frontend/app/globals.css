@@ -177,10 +177,13 @@ button:disabled {
   grid-area: chat;
   display: grid;
   align-content: center;
+  align-self: center;
   gap: 18px;
+  justify-self: center;
   min-height: 570px;
   padding: 32px;
   justify-items: center;
+  width: 100%;
   background:
     linear-gradient(145deg, rgba(114, 215, 255, 0.18), transparent 38%),
     linear-gradient(330deg, rgba(255, 122, 184, 0.2), transparent 48%),
