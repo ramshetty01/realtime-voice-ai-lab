@@ -207,9 +207,9 @@ export default function Home() {
     <main className="shell">
       <header className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Realtime Voice AI / Structure</p>
+          <p className="eyebrow">Realtime Voice AI</p>
           <h1 className="title">Voice Pipeline Lab</h1>
-          <p className="subtitle">Audio input, ASR, LLM, TTS, latency traces, and replay in one live console.</p>
+          <p className="subtitle">Chat, record, replay, and inspect latency from one polished voice console.</p>
         </div>
         <div className="hero-status">
           <div className={`status status-${connection}`} aria-label="Backend connection status">
@@ -224,6 +224,10 @@ export default function Home() {
 
       <section className="console-grid" aria-label="Voice assistant workspace">
         <aside className="recorder-card">
+          <div className="mode-toggle" aria-label="Input mode">
+            <span>Chat</span>
+            <span className="active-mode">Voice</span>
+          </div>
           <div className="recorder-top">
             <span className="label">Session</span>
             <strong>{status}</strong>
@@ -236,14 +240,6 @@ export default function Home() {
               <span />
               <span />
             </div>
-          </div>
-          <div className="pipeline-tree" aria-label="Pipeline structure">
-            <div className="tree-row tree-root">voice_lab/</div>
-            <div className="tree-row tree-folder">audio/ input_stream.wav</div>
-            <div className="tree-row tree-folder">asr/ transcript.json</div>
-            <div className="tree-row tree-folder">llm/ response.tokens</div>
-            <div className="tree-row tree-folder">tts/ output_audio.mp3</div>
-            <div className="tree-row tree-file">traces/ latency.jsonl</div>
           </div>
           <div className="recorder-actions">
             <button className="primary record-button" type="button" disabled={!canStart} onClick={startRecording}>
@@ -261,6 +257,10 @@ export default function Home() {
         </aside>
 
         <section className="conversation-card" aria-label="Transcript and assistant response">
+          <div className="mode-toggle" aria-label="Conversation mode">
+            <span className="active-mode">Chat</span>
+            <span>Voice</span>
+          </div>
           <div className="message-block user-block">
             <div className="message-meta">
               <span>You</span>
@@ -280,6 +280,12 @@ export default function Home() {
               </audio>
             ) : null}
             <div className="message-body">{response}</div>
+          </div>
+          <div className="prompt-bar">
+            <span>Ask about latency, failures, or replay traces...</span>
+            <button type="button" onClick={loadRequests}>
+              Refresh
+            </button>
           </div>
         </section>
 
