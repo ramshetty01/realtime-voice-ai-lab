@@ -176,9 +176,11 @@ button:disabled {
 .conversation-card {
   grid-area: chat;
   display: grid;
+  align-content: center;
   gap: 18px;
-  min-height: 610px;
+  min-height: 570px;
   padding: 32px;
+  justify-items: center;
   background:
     linear-gradient(145deg, rgba(114, 215, 255, 0.18), transparent 38%),
     linear-gradient(330deg, rgba(255, 122, 184, 0.2), transparent 48%),
@@ -320,7 +322,6 @@ button:disabled {
 .user-block {
   align-self: end;
   width: 82%;
-  margin-left: auto;
 }
 
 .assistant-block {
