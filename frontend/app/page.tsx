@@ -25,6 +25,9 @@ export default function Home() {
   const assistantIdRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const silenceRafRef = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const silenceStartedAtRef = useRef(0);
   const [connection, setConnection] = useState("connecting");
   const [voiceStatus, setVoiceStatus] = useState("ready");
   const [prompt, setPrompt] = useState("");
@@ -90,7 +93,10 @@ export default function Home() {
 
   useEffect(() => {
     const socket = connectVoiceSocket();
-    return () => socket.close();
+    return () => {
+      socket.close();
+      stopSilenceMonitor();
+    };
   }, []);
 
   useEffect(() => {
@@ -161,10 +167,12 @@ export default function Home() {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       });
       recorder.addEventListener("stop", () => {
+        stopSilenceMonitor();
         stream.getTracks().forEach((track) => track.stop());
         void sendAudio();
       });
       recorder.start();
+      startSilenceMonitor(stream);
       setVoiceStatus("recording");
     } catch {
       setVoiceStatus("microphone denied");
@@ -174,6 +182,43 @@ export default function Home() {
   function stopRecording() {
     recorderRef.current?.stop();
     setVoiceStatus("sending");
+  }
+
+  function startSilenceMonitor(stream: MediaStream) {
+    const AudioContextCtor =
+      window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = new AudioContextCtor();
+    const analyser = context.createAnalyser();
+    const source = context.createMediaStreamSource(stream);
+    const samples = new Uint8Array(analyser.fftSize);
+    source.connect(analyser);
+    audioContextRef.current = context;
+    silenceStartedAtRef.current = 0;
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(samples);
+      const rms = Math.sqrt(samples.reduce((sum, value) => sum + (value - 128) ** 2, 0) / samples.length) / 128;
+      const now = performance.now();
+      if (rms > 0.025) silenceStartedAtRef.current = 0;
+      else if (now - startedAtRef.current > 800) silenceStartedAtRef.current ||= now;
+
+      if (silenceStartedAtRef.current && now - silenceStartedAtRef.current > 1200) {
+        if (recorderRef.current?.state === "recording") stopRecording();
+        return;
+      }
+      silenceRafRef.current = requestAnimationFrame(tick);
+    };
+
+    silenceRafRef.current = requestAnimationFrame(tick);
+  }
+
+  function stopSilenceMonitor() {
+    cancelAnimationFrame(silenceRafRef.current);
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    silenceStartedAtRef.current = 0;
   }
 
   async function sendAudio() {
