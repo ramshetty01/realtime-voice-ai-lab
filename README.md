@@ -17,11 +17,20 @@ Browser microphone
   -> WebSocket /ws/voice
   -> audio validation
   -> ASR adapter
-  -> Ollama LLM adapter
+  -> NVIDIA NIM or Ollama LLM adapter
   -> Piper TTS adapter
   -> browser audio playback
   -> SQLite trace + latency dashboard
 ```
+
+This project implements a chained ASR -> LLM -> TTS voice assistant. That is
+the right shape for a portfolio reliability lab because each stage can be
+measured, replayed, timed out, and swapped independently.
+
+True speech-to-speech realtime voice is different: one live session accepts
+audio and returns audio directly, usually over WebRTC. That path can support
+lower latency and interruption, but it needs a realtime audio model/provider
+rather than the current separate NIM chat-completions, ASR, and TTS adapters.
 
 ## Local Setup
 
