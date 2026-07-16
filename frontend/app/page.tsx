@@ -23,6 +23,7 @@ export default function Home() {
   const startedAtRef = useRef(0);
   const assistantIdRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
   const [connection, setConnection] = useState("connecting");
   const [voiceStatus, setVoiceStatus] = useState("ready");
   const [prompt, setPrompt] = useState("");
@@ -54,6 +55,7 @@ export default function Home() {
       if (event.type === "transcript_completed" && event.transcript) {
         const assistantId = newId();
         assistantIdRef.current = assistantId;
+        setVoiceStatus("thinking");
         setMessages((current) => [
           ...current,
           { id: newId(), role: "user", text: event.transcript ?? "" },
@@ -85,8 +87,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!audioUrl) return;
+    setVoiceStatus("speaking");
     void audioRef.current?.play().catch(() => undefined);
   }, [audioUrl]);
+
+  useEffect(() => {
+    messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight });
+  }, [messages]);
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +103,7 @@ export default function Home() {
     const assistantId = newId();
     assistantIdRef.current = assistantId;
     setIsSubmitting(true);
+    setVoiceStatus("thinking");
     setPrompt("");
     setAudioUrl("");
     setMessages((current) => [
@@ -114,8 +122,10 @@ export default function Home() {
       const payload = await reply.json();
       updateMessage(assistantId, { text: payload.response ?? "", audioUrl: payload.audio_url ?? "" });
       setAudioUrl(payload.audio_url ?? "");
+      if (!payload.audio_url) setVoiceStatus("ready");
     } catch {
       updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running." });
+      setVoiceStatus("failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -123,6 +133,11 @@ export default function Home() {
 
   async function startRecording() {
     if (socketRef.current?.readyState !== WebSocket.OPEN) connectVoiceSocket();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setAudioUrl("");
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceStatus("microphone unavailable");
       return;
@@ -192,7 +207,7 @@ export default function Home() {
           <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
         </header>
 
-        <div className="message-list" aria-live="polite">
+        <div className="message-list" aria-live="polite" ref={messageListRef}>
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <div className="message-label">{message.role === "user" ? "You" : "AI"}</div>
@@ -221,7 +236,7 @@ export default function Home() {
             Send
           </button>
         </form>
-        {audioUrl ? <audio ref={audioRef} src={audioUrl} /> : null}
+        {audioUrl ? <audio ref={audioRef} src={audioUrl} onEnded={() => setVoiceStatus("ready")} /> : null}
       </section>
     </main>
   );
