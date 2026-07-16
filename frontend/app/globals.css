@@ -58,30 +58,6 @@ button:disabled {
   padding: 72px 34px 38px;
 }
 
-.shell::before,
-.shell::after {
-  position: fixed;
-  width: 84px;
-  height: 84px;
-  border-color: var(--line);
-  pointer-events: none;
-  content: "";
-}
-
-.shell::before {
-  top: 122px;
-  left: 11%;
-  border-top: 1px solid;
-  border-left: 1px solid;
-}
-
-.shell::after {
-  right: 11%;
-  bottom: 122px;
-  border-right: 1px solid;
-  border-bottom: 1px solid;
-}
-
 .hero,
 .console-grid {
   max-width: 1060px;
@@ -303,11 +279,6 @@ button:disabled {
   .shell {
     gap: 18px;
     padding: 18px 16px;
-  }
-
-  .shell::before,
-  .shell::after {
-    display: none;
   }
 
   .hero {
