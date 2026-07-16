@@ -20,7 +20,7 @@ Browser microphone
   -> NVIDIA NIM or Ollama LLM adapter
   -> Piper TTS adapter
   -> browser audio playback
-  -> SQLite trace + latency dashboard
+  -> SQLite trace + latency metrics
 ```
 
 This project implements a chained ASR -> LLM -> TTS voice assistant. That is
