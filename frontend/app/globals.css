@@ -148,7 +148,7 @@ button:disabled {
 
 .console-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
+  grid-template-columns: minmax(260px, 0.7fr) minmax(520px, 720px) minmax(360px, 0.8fr);
   gap: 18px;
   align-items: stretch;
 }
@@ -166,7 +166,8 @@ button:disabled {
 }
 
 .recorder-card {
-  grid-area: voice;
+  grid-column: 3;
+  grid-row: 1;
   display: grid;
   gap: 22px;
   min-height: 610px;
@@ -174,7 +175,8 @@ button:disabled {
 }
 
 .conversation-card {
-  grid-area: chat;
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   align-content: center;
   align-self: center;
@@ -383,6 +385,12 @@ button:disabled {
 @media (max-width: 980px) {
   .console-grid {
     grid-template-columns: 1fr;
+  }
+
+  .recorder-card,
+  .conversation-card {
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
