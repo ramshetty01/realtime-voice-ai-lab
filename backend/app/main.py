@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from app.events import new_request_id, utc_timestamp, voice_event
 from app.logging import log_event
@@ -20,6 +21,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
 
 
 @app.get("/health")
@@ -42,6 +47,21 @@ def request_detail(request_id: str) -> dict[str, object]:
     if not trace:
         raise HTTPException(status_code=404, detail="Request not found")
     return trace
+
+
+@app.post("/chat")
+async def chat(payload: ChatRequest) -> dict[str, object]:
+    result = await run_text_pipeline(payload.message)
+    response = next((event.get("response") for event in result["events"] if event["type"] == "llm_completed"), "")
+    audio_url = next((event.get("audio_url") for event in result["events"] if event["type"] == "tts_audio_ready"), "")
+    return {
+        "request_id": result["request_id"],
+        "transcript": payload.message,
+        "response": response,
+        "audio_url": audio_url,
+        "events": result["events"],
+        "metrics": result["metrics"],
+    }
 
 
 @app.post("/requests/{request_id}/replay-transcript")

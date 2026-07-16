@@ -191,8 +191,12 @@ button:disabled {
 }
 
 .prompt-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
   min-height: 58px;
-  padding: 16px 22px;
+  padding: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.07);
   color: var(--muted);
@@ -201,19 +205,25 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.prompt-bar::before {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 14px;
-  background: var(--orange);
-  content: "";
+.prompt-bar input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  outline: 0;
+  padding: 0 10px;
+  text-transform: none;
 }
 
-.prompt-bar span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.prompt-bar input::placeholder {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.prompt-bar button,
+.voice-actions button {
+  padding: 0 18px;
 }
 
 .voice-panel {
@@ -272,6 +282,13 @@ button:disabled {
 .voice-copy strong {
   color: var(--ink);
   font-size: 24px;
+}
+
+.voice-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
 }
 
 @media (max-width: 980px) {

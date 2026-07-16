@@ -1,4 +1,6 @@
-from app.main import app, health
+import asyncio
+
+from app.main import ChatRequest, app, chat, health
 
 
 def test_health_route_returns_status() -> None:
@@ -11,3 +13,11 @@ def test_health_route_returns_status() -> None:
 
 def test_cors_middleware_is_configured() -> None:
     assert any(middleware.cls.__name__ == "CORSMiddleware" for middleware in app.user_middleware)
+
+
+def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://127.0.0.1:1")
+    payload = asyncio.run(chat(ChatRequest(message="hello")))
+    assert payload["transcript"] == "hello"
+    assert payload["response"]
+    assert str(payload["audio_url"]).startswith("data:audio/wav;base64,")
