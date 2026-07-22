@@ -110,6 +110,18 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+
 .message-list {
   display: flex;
   flex-direction: column;
@@ -203,6 +215,11 @@ button:disabled {
     align-items: flex-start;
     flex-direction: column;
     padding: 18px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .title {

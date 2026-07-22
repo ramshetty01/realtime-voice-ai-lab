@@ -19,6 +19,11 @@ type ChatMessage = {
 };
 
 const newId = () => globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+const welcomeTurn = (): ChatMessage => ({
+  id: newId(),
+  role: "assistant",
+  text: welcomeMessage,
+});
 
 export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
@@ -37,16 +42,17 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: newId(),
-      role: "assistant",
-      text: welcomeMessage,
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
     setMessages((current) => current.map((message) => (message.id === id ? { ...message, ...patch } : message)));
+  }
+
+  function resetConversation() {
+    setMessages([welcomeTurn()]);
+    setPrompt("");
+    setAudioUrl("");
+    setVoiceStatus("ready");
   }
 
   function conversationHistory() {
@@ -319,7 +325,12 @@ export default function Home() {
             <p className="eyebrow">Realtime Voice AI</p>
             <h1 className="title">Voice Pipeline Lab</h1>
           </div>
-          <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
+          <div className="header-actions">
+            <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
+            <button type="button" onClick={resetConversation}>
+              Reset
+            </button>
+          </div>
         </header>
 
         <div className="message-list" aria-live="polite" ref={messageListRef}>
