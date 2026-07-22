@@ -8,6 +8,7 @@ const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/vo
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 const socketOpenTimeoutMs = 8000;
+const silenceThreshold = Number(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD ?? "0.025");
 
 type ChatMessage = {
   id: string;
@@ -258,7 +259,7 @@ export default function Home() {
       analyser.getByteTimeDomainData(samples);
       const rms = Math.sqrt(samples.reduce((sum, value) => sum + (value - 128) ** 2, 0) / samples.length) / 128;
       const now = performance.now();
-      if (rms > 0.025) silenceStartedAtRef.current = 0;
+      if (rms > silenceThreshold) silenceStartedAtRef.current = 0;
       else if (now - startedAtRef.current > 800) silenceStartedAtRef.current ||= now;
 
       if (silenceStartedAtRef.current && now - silenceStartedAtRef.current > 1200) {
