@@ -49,6 +49,29 @@ def test_audio_size_limit_rejects_large_payload(monkeypatch) -> None:
     assert websocket.events[0]["stage"] == "audio_validation"
 
 
+def test_handle_audio_completes_after_degraded_tts(monkeypatch) -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    async def fake_pipeline(*_args, **_kwargs):
+        return {
+            "events": [{"type": "request_failed", "request_id": "req_test", "stage": "tts"}],
+            "metrics": {"total_ms": 10, "slowest_stage": "tts"},
+        }
+
+    websocket = FakeWebSocket()
+    monkeypatch.setattr("app.main.run_voice_pipeline", fake_pipeline)
+
+    asyncio.run(handle_audio(websocket, "req_test", b"abc", {"mime_type": "audio/webm"}, Timer()))
+
+    assert websocket.events[-1]["type"] == "request_completed"
+    assert websocket.events[-1]["metrics"]["slowest_stage"] == "tts"
+
+
 def test_invalid_websocket_json_returns_failure() -> None:
     class FakeWebSocket:
         def __init__(self) -> None:
