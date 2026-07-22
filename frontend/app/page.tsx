@@ -7,6 +7,7 @@ import type { VoiceEvent } from "../src/lib/events";
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
+const socketOpenTimeoutMs = 8000;
 
 type ChatMessage = {
   id: string;
@@ -63,9 +64,17 @@ export default function Home() {
 
     socketReadyPromiseRef.current = new Promise((resolve, reject) => {
       let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        settle(() => {
+          setConnection("error");
+          socket.close();
+          reject(new Error("Voice socket timed out before opening."));
+        });
+      }, socketOpenTimeoutMs);
       const settle = (callback: () => void) => {
         if (settled) return;
         settled = true;
+        window.clearTimeout(timeoutId);
         socketReadyPromiseRef.current = null;
         callback();
       };
