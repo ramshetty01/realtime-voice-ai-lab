@@ -346,6 +346,12 @@ export default function Home() {
           </div>
         </header>
 
+        {connection !== "connected" ? (
+          <div className="connection-warning" role="status">
+            Voice backend {connection}. Text chat may still work.
+          </div>
+        ) : null}
+
         <div className="message-list" aria-live="polite" onScroll={handleMessageScroll} ref={messageListRef}>
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>

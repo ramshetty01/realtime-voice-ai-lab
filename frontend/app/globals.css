@@ -122,6 +122,16 @@ button:disabled {
   font-size: 11px;
 }
 
+.connection-warning {
+  border-bottom: 1px solid rgba(255, 90, 31, 0.42);
+  background: rgba(255, 90, 31, 0.14);
+  color: var(--ink);
+  padding: 10px 26px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .message-list {
   position: relative;
   display: flex;
