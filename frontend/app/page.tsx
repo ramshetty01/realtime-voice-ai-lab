@@ -42,6 +42,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
@@ -163,8 +164,20 @@ export default function Home() {
   }, [audioUrl]);
 
   useEffect(() => {
-    messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight });
+    if (!showScrollButton) scrollMessagesToBottom();
   }, [messages]);
+
+  function handleMessageScroll() {
+    const list = messageListRef.current;
+    if (!list) return;
+    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    setShowScrollButton(distanceFromBottom > 120);
+  }
+
+  function scrollMessagesToBottom() {
+    messageListRef.current?.scrollTo({ top: messageListRef.current.scrollHeight, behavior: "smooth" });
+    setShowScrollButton(false);
+  }
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -333,7 +346,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="message-list" aria-live="polite" ref={messageListRef}>
+        <div className="message-list" aria-live="polite" onScroll={handleMessageScroll} ref={messageListRef}>
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <div className="message-label">{message.role === "user" ? "You" : "AI"}</div>
@@ -345,6 +358,11 @@ export default function Home() {
               ) : null}
             </article>
           ))}
+          {showScrollButton ? (
+            <button className="scroll-bottom" type="button" onClick={scrollMessagesToBottom}>
+              Bottom
+            </button>
+          ) : null}
         </div>
 
         <form className="composer" onSubmit={submitChat}>
