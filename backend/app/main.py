@@ -23,6 +23,26 @@ def configured_cors_origins() -> list[str]:
     return origins
 
 
+def positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer.") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be greater than zero.")
+    return value
+
+
+def positive_float_env(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a number.") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be greater than zero.")
+    return value
+
+
 app = FastAPI(title="Realtime Voice AI Reliability Lab")
 app.add_middleware(
     CORSMiddleware,
@@ -173,7 +193,7 @@ async def handle_audio(
         await websocket.send_json(event)
         return
 
-    max_audio_bytes = int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
+    max_audio_bytes = positive_int_env("MAX_AUDIO_BYTES", 10 * 1024 * 1024)
     if len(audio) > max_audio_bytes:
         event = voice_event(
             "request_failed",
@@ -230,7 +250,7 @@ async def run_voice_pipeline(
     try:
         transcript = await asyncio.wait_for(
             asyncio.to_thread(transcribe_audio, audio),
-            timeout=float(os.getenv("ASR_TIMEOUT_SECONDS", "30")),
+            timeout=positive_float_env("ASR_TIMEOUT_SECONDS", 30),
         )
         asr_ms = asr.ms()
         events.append(voice_event("transcript_completed", request_id=request_id, transcript=transcript))
@@ -272,7 +292,7 @@ async def run_text_pipeline(
     try:
         assistant_response = await asyncio.wait_for(
             asyncio.to_thread(generate_response, transcript, history),
-            timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", "45")),
+            timeout=positive_float_env("LLM_TIMEOUT_SECONDS", 45),
         )
     except TimeoutError:
         assistant_response = "I had trouble generating a full response from the local model. Please try again with a shorter request."
@@ -287,7 +307,7 @@ async def run_text_pipeline(
     try:
         audio_url = await asyncio.wait_for(
             asyncio.to_thread(synthesize_speech, assistant_response),
-            timeout=float(os.getenv("TTS_TIMEOUT_SECONDS", "30")),
+            timeout=positive_float_env("TTS_TIMEOUT_SECONDS", 30),
         )
         tts_ms: int | None = tts.ms()
         events.append(voice_event("tts_audio_ready", request_id=request_id, audio_url=audio_url))
