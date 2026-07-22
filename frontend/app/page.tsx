@@ -43,6 +43,8 @@ export default function Home() {
   const silenceRafRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const silenceStartedAtRef = useRef(0);
+  const lastVoiceAudioRef = useRef<Blob | null>(null);
+  const lastVoiceDurationRef = useRef(0);
   const [connection, setConnection] = useState("connecting");
   const [voiceStatus, setVoiceStatus] = useState("ready");
   const [prompt, setPrompt] = useState("");
@@ -335,9 +337,21 @@ export default function Home() {
   }
 
   async function sendAudio() {
-    const socket = socketRef.current;
     const audio = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType });
     const duration_ms = Math.round(performance.now() - startedAtRef.current);
+    lastVoiceAudioRef.current = audio;
+    lastVoiceDurationRef.current = duration_ms;
+    await sendAudioBlob(audio, duration_ms);
+  }
+
+  async function retryVoice() {
+    if (!lastVoiceAudioRef.current) return;
+    setVoiceStatus("sending");
+    await sendAudioBlob(lastVoiceAudioRef.current, lastVoiceDurationRef.current);
+  }
+
+  async function sendAudioBlob(audio: Blob, duration_ms: number) {
+    const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       setVoiceStatus("disconnected");
       return;
@@ -363,6 +377,9 @@ export default function Home() {
 
   const isRecording = voiceStatus === "recording" || voiceStatus === "manual stop";
   const canRecord = connection === "connected" && !isRecording && voiceStatus !== "sending";
+  const canRetryVoice = Boolean(
+    lastVoiceAudioRef.current && (voiceStatus.toLowerCase().includes("failed") || voiceStatus === "disconnected")
+  );
 
   return (
     <main className="shell">
@@ -452,7 +469,14 @@ export default function Home() {
             Send
           </button>
         </form>
-        <p className="permission-hint">Voice needs browser microphone permission.</p>
+        <p className="permission-hint">
+          Voice needs browser microphone permission.
+          {canRetryVoice ? (
+            <button className="inline-action" type="button" onClick={() => void retryVoice()}>
+              Retry voice
+            </button>
+          ) : null}
+        </p>
         {audioUrl ? <audio ref={audioRef} src={audioUrl} onEnded={() => setVoiceStatus("ready")} /> : null}
       </section>
     </main>
