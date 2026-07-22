@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from app.main import ChatRequest, app, chat, handle_audio, health
+from app.main import ChatRequest, app, chat, handle_audio, handle_client_event, health
 from app.timing import Timer
 
 
@@ -47,3 +47,20 @@ def test_audio_size_limit_rejects_large_payload(monkeypatch) -> None:
 
     assert websocket.events[0]["type"] == "request_failed"
     assert websocket.events[0]["stage"] == "audio_validation"
+
+
+def test_invalid_websocket_json_returns_failure() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    websocket = FakeWebSocket()
+
+    metadata = asyncio.run(handle_client_event(websocket, "req_test", "{bad json"))
+
+    assert metadata == {}
+    assert websocket.events[-1]["type"] == "request_failed"
+    assert websocket.events[-1]["stage"] == "audio_validation"
