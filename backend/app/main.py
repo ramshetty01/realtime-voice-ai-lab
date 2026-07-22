@@ -76,8 +76,11 @@ async def replay_transcript(request_id: str) -> dict[str, object]:
     trace = get_request(request_id)
     if not trace or not trace.get("transcript"):
         raise HTTPException(status_code=404, detail="Request transcript not found")
-    history = llm_history(trace.get("conversation_turns")[:-2] if isinstance(trace.get("conversation_turns"), list) else None)
-    return await run_text_pipeline(str(trace["transcript"]), history=history, replay_of=request_id)
+    source_turns = trace.get("conversation_turns") if isinstance(trace.get("conversation_turns"), list) else []
+    history = llm_history(source_turns[:-2])
+    result = await run_text_pipeline(str(trace["transcript"]), history=history, replay_of=request_id)
+    result["source_conversation_turns"] = source_turns
+    return result
 
 
 @app.post("/requests/{request_id}/replay-audio")
