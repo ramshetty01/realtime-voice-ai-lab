@@ -218,7 +218,7 @@ export default function Home() {
     setMessages((current) => [
       ...current,
       { id: newId(), role: "user", text: message, createdAt: new Date().toISOString() },
-      { id: assistantId, role: "assistant", text: "Thinking...", createdAt: new Date().toISOString(), status: "thinking" },
+      { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), status: "thinking" },
     ]);
 
     try {
@@ -398,7 +398,11 @@ export default function Home() {
                 </button>
               </div>
               {message.role === "assistant" && message.status ? <div className={`status-badge ${message.status}`}>{message.status}</div> : null}
-              <div className="message-text">{message.text}</div>
+              {message.status === "thinking" && !message.text ? (
+                <div className="message-skeleton" aria-label="Assistant is thinking" />
+              ) : (
+                <div className="message-text">{message.text}</div>
+              )}
               {message.metrics ? (
                 <div className="message-metrics">
                   {message.metrics.total_ms ?? "?"} ms · slowest {message.metrics.slowest_stage ?? "unknown"}
