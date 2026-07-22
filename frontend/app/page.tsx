@@ -343,6 +343,12 @@ export default function Home() {
           <textarea
             aria-label="Message"
             disabled={isSubmitting}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="Message the AI..."
             value={prompt}
