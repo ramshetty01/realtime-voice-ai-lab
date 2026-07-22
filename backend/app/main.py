@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.events import new_request_id, utc_timestamp, voice_event
 from app.logging import log_event
-from app.pipeline import generate_response, synthesize_speech, transcribe_audio
+from app.pipeline import generate_response, llm_history, synthesize_speech, transcribe_audio
 from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
 
@@ -70,7 +70,8 @@ async def replay_transcript(request_id: str) -> dict[str, object]:
     trace = get_request(request_id)
     if not trace or not trace.get("transcript"):
         raise HTTPException(status_code=404, detail="Request transcript not found")
-    return await run_text_pipeline(str(trace["transcript"]), replay_of=request_id)
+    history = llm_history(trace.get("conversation_turns")[:-2] if isinstance(trace.get("conversation_turns"), list) else None)
+    return await run_text_pipeline(str(trace["transcript"]), history=history, replay_of=request_id)
 
 
 @app.post("/requests/{request_id}/replay-audio")
@@ -283,6 +284,7 @@ async def run_text_pipeline(
     total_ms = total.ms()
     metrics = build_metrics(asr_ms, llm_ms, tts_ms, total_ms)
     status = "completed" if tts_ms is not None else "degraded"
+    conversation_turns = [*llm_history(history), {"role": "user", "content": transcript}, {"role": "assistant", "content": assistant_response}]
     save_request(
         {
             "request_id": request_id,
@@ -291,6 +293,7 @@ async def run_text_pipeline(
             "assistant_response": assistant_response,
             "audio_path": audio_path,
             "replay_of": replay_of,
+            "conversation_turns": conversation_turns,
             "created_at": utc_timestamp(),
             **metrics,
         }

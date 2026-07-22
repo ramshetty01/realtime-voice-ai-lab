@@ -25,6 +25,7 @@ export default function Home() {
   const assistantIdRef = useRef("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const socketReadyPromiseRef = useRef<Promise<WebSocket> | null>(null);
   const silenceRafRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const silenceStartedAtRef = useRef(0);
@@ -53,48 +54,87 @@ export default function Home() {
   }
 
   function connectVoiceSocket() {
+    if (socketRef.current?.readyState === WebSocket.OPEN) return Promise.resolve(socketRef.current);
+    if (socketReadyPromiseRef.current) return socketReadyPromiseRef.current;
+
+    setConnection("connecting");
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
-    socket.addEventListener("open", () => setConnection("connected"));
-    socket.addEventListener("close", () => setConnection("disconnected"));
-    socket.addEventListener("error", () => setConnection("error"));
-    socket.addEventListener("message", (message) => {
-      if (typeof message.data !== "string") return;
-      const event = JSON.parse(message.data) as VoiceEvent;
+    socketReadyPromiseRef.current = new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        socketReadyPromiseRef.current = null;
+        callback();
+      };
 
-      if (event.type === "transcript_completed" && event.transcript) {
-        const assistantId = newId();
-        assistantIdRef.current = assistantId;
-        setVoiceStatus("thinking");
-        setMessages((current) => [
-          ...current,
-          { id: newId(), role: "user", text: event.transcript ?? "" },
-          { id: assistantId, role: "assistant", text: "" },
-        ]);
-      }
-      if (event.type === "llm_token" && event.token) {
-        const assistantId = assistantIdRef.current;
-        setMessages((current) =>
-          current.map((item) => (item.id === assistantId ? { ...item, text: item.text + event.token } : item))
-        );
-      }
-      if (event.type === "llm_completed" && event.response) updateMessage(assistantIdRef.current, { text: event.response });
-      if (event.type === "tts_audio_ready" && event.audio_url) {
-        setAudioUrl(event.audio_url);
-        updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
-      }
-      if (event.type === "request_completed") setVoiceStatus("ready");
-      if (event.type === "request_failed") setVoiceStatus(event.message ?? "failed");
+      socket.addEventListener(
+        "open",
+        () =>
+          settle(() => {
+            setConnection("connected");
+            resolve(socket);
+          }),
+        { once: true }
+      );
+      socket.addEventListener(
+        "close",
+        () =>
+          settle(() => {
+            setConnection("disconnected");
+            reject(new Error("Voice socket closed before opening."));
+          }),
+        { once: true }
+      );
+      socket.addEventListener(
+        "error",
+        () =>
+          settle(() => {
+            setConnection("error");
+            reject(new Error("Voice socket failed to open."));
+          }),
+        { once: true }
+      );
+      socket.addEventListener("message", (message) => {
+        if (typeof message.data !== "string") return;
+        const event = JSON.parse(message.data) as VoiceEvent;
+
+        if (event.type === "transcript_completed" && event.transcript) {
+          const assistantId = newId();
+          assistantIdRef.current = assistantId;
+          setVoiceStatus("thinking");
+          setMessages((current) => [
+            ...current,
+            { id: newId(), role: "user", text: event.transcript ?? "" },
+            { id: assistantId, role: "assistant", text: "" },
+          ]);
+        }
+        if (event.type === "llm_token" && event.token) {
+          const assistantId = assistantIdRef.current;
+          setMessages((current) =>
+            current.map((item) => (item.id === assistantId ? { ...item, text: item.text + event.token } : item))
+          );
+        }
+        if (event.type === "llm_completed" && event.response) updateMessage(assistantIdRef.current, { text: event.response });
+        if (event.type === "tts_audio_ready" && event.audio_url) {
+          setAudioUrl(event.audio_url);
+          updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
+        }
+        if (event.type === "request_completed") setVoiceStatus("ready");
+        if (event.type === "request_failed") setVoiceStatus(event.message ?? "failed");
+      });
     });
 
-    return socket;
+    return socketReadyPromiseRef.current;
   }
 
   useEffect(() => {
-    const socket = connectVoiceSocket();
+    void connectVoiceSocket().catch(() => undefined);
     return () => {
-      socket.close();
+      socketReadyPromiseRef.current = null;
+      socketRef.current?.close();
       stopSilenceMonitor();
     };
   }, []);
@@ -147,7 +187,12 @@ export default function Home() {
   }
 
   async function startRecording() {
-    if (socketRef.current?.readyState !== WebSocket.OPEN) connectVoiceSocket();
+    try {
+      await connectVoiceSocket();
+    } catch {
+      setVoiceStatus("disconnected");
+      return;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;

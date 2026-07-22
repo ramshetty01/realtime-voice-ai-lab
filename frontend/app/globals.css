@@ -18,7 +18,9 @@
 
 body {
   margin: 0;
-  overflow: hidden;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(circle at 66% 62%, rgba(180, 145, 83, 0.3), transparent 34%),
     radial-gradient(circle at 48% 34%, rgba(74, 102, 104, 0.34), transparent 34%),
@@ -54,9 +56,10 @@ button:disabled {
 
 .shell {
   display: grid;
-  height: 100vh;
+  min-height: 100dvh;
+  height: auto;
   overflow: hidden;
-  padding: 32px;
+  padding: clamp(12px, 2vw, 32px);
 }
 
 .chat-app {
