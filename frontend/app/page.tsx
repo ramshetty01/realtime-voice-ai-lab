@@ -15,7 +15,7 @@ type ChatMessage = {
   audioUrl?: string;
 };
 
-const newId = () => Math.random().toString(36).slice(2);
+const newId = () => globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 
 export default function Home() {
   const socketRef = useRef<WebSocket | null>(null);
@@ -142,7 +142,7 @@ export default function Home() {
   useEffect(() => {
     if (!audioUrl) return;
     setVoiceStatus("speaking");
-    void audioRef.current?.play().catch(() => undefined);
+    void audioRef.current?.play().catch(() => setVoiceStatus("playback failed"));
   }, [audioUrl]);
 
   useEffect(() => {

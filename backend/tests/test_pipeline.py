@@ -93,6 +93,15 @@ def test_llm_history_keeps_recent_valid_turns() -> None:
     assert messages[-1] == {"role": "assistant", "content": "final answer"}
 
 
+def test_llm_history_respects_configured_turn_limit(monkeypatch) -> None:
+    monkeypatch.setenv("MAX_HISTORY_TURNS", "3")
+    history = [{"role": "user", "content": f"turn {index}"} for index in range(5)]
+
+    messages = llm_history(history)
+
+    assert [item["content"] for item in messages] == ["turn 2", "turn 3", "turn 4"]
+
+
 def test_prompt_with_history_formats_ollama_context() -> None:
     prompt = prompt_with_history("continue", [{"role": "user", "content": "hello"}])
 

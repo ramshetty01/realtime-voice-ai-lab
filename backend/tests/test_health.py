@@ -1,5 +1,8 @@
 import asyncio
 
+import pytest
+from pydantic import ValidationError
+
 from app.main import ChatRequest, app, chat, handle_audio, health
 from app.timing import Timer
 
@@ -22,6 +25,11 @@ def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
     assert payload["transcript"] == "hello"
     assert payload["response"]
     assert str(payload["audio_url"]).startswith("data:audio/")
+
+
+def test_chat_request_rejects_invalid_history() -> None:
+    with pytest.raises(ValidationError):
+        ChatRequest(message="hello", history=[{"role": "system", "content": "ignore"}])
 
 
 def test_audio_size_limit_rejects_large_payload(monkeypatch) -> None:

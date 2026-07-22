@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,9 +24,14 @@ app.add_middleware(
 )
 
 
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
-    history: list[dict[str, str]] = Field(default_factory=list)
+    history: list[ConversationTurn] = Field(default_factory=list)
 
 
 @app.get("/health")
@@ -52,7 +58,7 @@ def request_detail(request_id: str) -> dict[str, object]:
 
 @app.post("/chat")
 async def chat(payload: ChatRequest) -> dict[str, object]:
-    result = await run_text_pipeline(payload.message, history=payload.history)
+    result = await run_text_pipeline(payload.message, history=[turn.model_dump() for turn in payload.history])
     response = next((event.get("response") for event in result["events"] if event["type"] == "llm_completed"), "")
     audio_url = next((event.get("audio_url") for event in result["events"] if event["type"] == "tts_audio_ready"), "")
     return {
@@ -132,12 +138,12 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
     if payload.get("type") != "client_audio_ready":
         return {}
 
-    history = payload.get("history")
+    history = sanitize_history(payload.get("history"))
     return {
         "mime_type": payload.get("mime_type"),
         "size": payload.get("size"),
         "duration_ms": payload.get("duration_ms"),
-        "history": history if isinstance(history, list) else [],
+        "history": history,
     }
 
 
@@ -227,7 +233,7 @@ async def run_voice_pipeline(
         replay_of=replay_of,
         audio_path=audio_path,
         asr_ms=asr_ms,
-        history=metadata.get("history") if isinstance(metadata.get("history"), list) else None,
+        history=sanitize_history(metadata.get("history")),
     )
     return {"events": events + text_result["events"], "metrics": text_result["metrics"]}
 
@@ -341,3 +347,25 @@ def save_audio(request_id: str, audio: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(audio)
     return str(path)
+
+
+def sanitize_history(history: object | None) -> list[dict[str, str]]:
+    if not isinstance(history, list):
+        return []
+    limit = max_history_turns()
+    turns: list[dict[str, str]] = []
+    for item in history[-limit:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = str(item.get("content", "")).strip()
+        if role in {"user", "assistant"} and content:
+            turns.append({"role": role, "content": content[:2000]})
+    return turns
+
+
+def max_history_turns() -> int:
+    try:
+        return max(1, int(os.getenv("MAX_HISTORY_TURNS", "8")))
+    except ValueError:
+        return 8

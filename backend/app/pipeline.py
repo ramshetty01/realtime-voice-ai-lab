@@ -96,7 +96,7 @@ def generate_with_nvidia_nim(transcript: str, history: list[dict[str, str]] | No
 
 def llm_history(history: list[dict[str, str]] | None) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
-    for item in (history or [])[-8:]:
+    for item in (history or [])[-max_history_turns():]:
         role = item.get("role")
         content = item.get("content", "").strip()
         if role in {"user", "assistant"} and content:
@@ -110,6 +110,13 @@ def prompt_with_history(transcript: str, history: list[dict[str, str]] | None) -
         return transcript
     turns = "\n".join(f"{item['role']}: {item['content']}" for item in messages)
     return f"Conversation so far:\n{turns}\n\nUser: {transcript}\nAssistant:"
+
+
+def max_history_turns() -> int:
+    try:
+        return max(1, int(os.getenv("MAX_HISTORY_TURNS", "8")))
+    except ValueError:
+        return 8
 
 
 def synthesize_speech(text: str) -> str:
