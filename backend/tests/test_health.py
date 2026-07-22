@@ -76,7 +76,10 @@ def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
 
     monkeypatch.setattr("app.main.get_request", lambda request_id: {"transcript": "hello", "conversation_turns": turns})
 
+    captured: dict[str, object] = {}
+
     async def fake_pipeline(*args, **kwargs):
+        captured.update(kwargs)
         return {"events": [], "metrics": {}}
 
     monkeypatch.setattr("app.main.run_text_pipeline", fake_pipeline)
@@ -84,3 +87,4 @@ def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
     payload = asyncio.run(replay_transcript("req_test"))
 
     assert payload["source_conversation_turns"] == turns
+    assert captured["history"] == turns[:2]
