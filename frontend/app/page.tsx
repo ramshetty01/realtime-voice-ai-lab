@@ -211,6 +211,10 @@ export default function Home() {
       setVoiceStatus("microphone unavailable");
       return;
     }
+    if (!window.MediaRecorder) {
+      setVoiceStatus("recording unsupported");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       chunksRef.current = [];
