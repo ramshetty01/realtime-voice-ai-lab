@@ -34,6 +34,14 @@ rather than the current separate NIM chat-completions, ASR, and TTS adapters.
 
 ## Local Setup
 
+One command:
+
+```sh
+./scripts/setup_local.sh
+```
+
+Manual setup:
+
 ```sh
 cp .env.example .env
 cd backend
