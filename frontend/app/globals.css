@@ -30,7 +30,7 @@ body {
 }
 
 button,
-input {
+textarea {
   font: inherit;
 }
 
@@ -171,17 +171,18 @@ button:disabled {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.composer input {
+.composer textarea {
   min-width: 0;
   height: 44px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.06);
   color: var(--ink);
   outline: 0;
-  padding: 0 14px;
+  padding: 11px 14px;
+  resize: none;
 }
 
-.composer input::placeholder {
+.composer textarea::placeholder {
   color: var(--muted);
 }
 
