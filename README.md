@@ -69,6 +69,7 @@ The app stays free by default:
 - LLM calls NVIDIA NIM when `NVIDIA_NIM_BASE_URL`, `NVIDIA_NIM_MODEL`, and `NVIDIA_NIM_API_KEY` or `NGC_API_KEY` are set. Otherwise it falls back to Ollama at `OLLAMA_BASE_URL`; if Ollama is unavailable, the app returns a clear fallback response.
 - TTS calls Piper when `PIPER_BIN` and `PIPER_MODEL_PATH` are valid; otherwise it returns a short playable WAV fallback.
 - Conversation history keeps the latest `MAX_HISTORY_TURNS` turns by default.
+- Voice uploads larger than `MAX_AUDIO_BYTES` are rejected before ASR.
 
 Optional local NVIDIA NIM:
 
