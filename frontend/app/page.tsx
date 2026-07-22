@@ -394,6 +394,7 @@ export default function Home() {
             Send
           </button>
         </form>
+        <p className="permission-hint">Voice needs browser microphone permission.</p>
         {audioUrl ? <audio ref={audioRef} src={audioUrl} onEnded={() => setVoiceStatus("ready")} /> : null}
       </section>
     </main>
