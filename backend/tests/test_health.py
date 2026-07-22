@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from app.main import ChatRequest, app, chat, handle_audio, handle_client_event, health, replay_transcript
+from app.main import ChatRequest, app, chat, configured_cors_origins, handle_audio, handle_client_event, health, replay_transcript
 from app.timing import Timer
 
 
@@ -17,6 +17,13 @@ def test_health_route_returns_status() -> None:
 
 def test_cors_middleware_is_configured() -> None:
     assert any(middleware.cls.__name__ == "CORSMiddleware" for middleware in app.user_middleware)
+
+
+def test_configured_cors_origins_rejects_blank_env(monkeypatch) -> None:
+    monkeypatch.setenv("CORS_ORIGINS", " , ")
+
+    with pytest.raises(RuntimeError):
+        configured_cors_origins()
 
 
 def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
