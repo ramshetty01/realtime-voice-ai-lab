@@ -17,6 +17,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
           transcript text,
           assistant_response text,
           audio_path text,
+          mime_type text,
           replay_of text,
           conversation_turns text,
           asr_ms integer,
@@ -30,6 +31,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     )
     for column, definition in {
         "audio_path": "text",
+        "mime_type": "text",
         "replay_of": "text",
         "conversation_turns": "text",
         "slowest_stage": "text",
@@ -46,9 +48,9 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
         db.execute(
             """
             insert or replace into requests (
-              request_id, status, transcript, assistant_response, audio_path, replay_of,
+              request_id, status, transcript, assistant_response, audio_path, mime_type, replay_of,
               conversation_turns, asr_ms, llm_total_ms, tts_total_ms, total_ms, slowest_stage, created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 trace["request_id"],
@@ -56,6 +58,7 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
                 trace.get("transcript"),
                 trace.get("assistant_response"),
                 trace.get("audio_path"),
+                trace.get("mime_type"),
                 trace.get("replay_of"),
                 json.dumps(trace.get("conversation_turns") or []),
                 trace.get("asr_ms"),

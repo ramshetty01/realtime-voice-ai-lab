@@ -234,6 +234,7 @@ async def run_voice_pipeline(
         audio_path=audio_path,
         asr_ms=asr_ms,
         history=sanitize_history(metadata.get("history")),
+        mime_type=metadata.get("mime_type") if isinstance(metadata.get("mime_type"), str) else None,
     )
     return {"events": events + text_result["events"], "metrics": text_result["metrics"]}
 
@@ -246,6 +247,7 @@ async def run_text_pipeline(
     audio_path: str | None = None,
     asr_ms: int | None = None,
     history: list[dict[str, str]] | None = None,
+    mime_type: str | None = None,
 ) -> dict[str, object]:
     request_id = request_id or new_request_id()
     total = total or Timer()
@@ -298,6 +300,7 @@ async def run_text_pipeline(
             "transcript": transcript,
             "assistant_response": assistant_response,
             "audio_path": audio_path,
+            "mime_type": mime_type,
             "replay_of": replay_of,
             "conversation_turns": conversation_turns,
             "created_at": utc_timestamp(),
