@@ -9,6 +9,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 const socketOpenTimeoutMs = 8000;
 const silenceThreshold = Number(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD ?? "0.025");
+const silenceDurationMs = Number(process.env.NEXT_PUBLIC_SILENCE_DURATION_MS ?? "1200");
 
 type ChatMessage = {
   id: string;
@@ -262,7 +263,7 @@ export default function Home() {
       if (rms > silenceThreshold) silenceStartedAtRef.current = 0;
       else if (now - startedAtRef.current > 800) silenceStartedAtRef.current ||= now;
 
-      if (silenceStartedAtRef.current && now - silenceStartedAtRef.current > 1200) {
+      if (silenceStartedAtRef.current && now - silenceStartedAtRef.current > silenceDurationMs) {
         if (recorderRef.current?.state === "recording") stopRecording();
         return;
       }
