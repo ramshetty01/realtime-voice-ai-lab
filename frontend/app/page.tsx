@@ -99,11 +99,13 @@ export default function Home() {
       );
       socket.addEventListener(
         "close",
-        () =>
+        () => {
+          setConnection("disconnected");
           settle(() => {
             setConnection("disconnected");
             reject(new Error("Voice socket closed before opening."));
-          }),
+          });
+        },
         { once: true }
       );
       socket.addEventListener(
