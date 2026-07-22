@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from app.main import ChatRequest, app, chat, handle_audio, handle_client_event, health
+from app.main import ChatRequest, app, chat, handle_audio, handle_client_event, health, replay_transcript
 from app.timing import Timer
 
 
@@ -64,3 +64,23 @@ def test_invalid_websocket_json_returns_failure() -> None:
     assert metadata == {}
     assert websocket.events[-1]["type"] == "request_failed"
     assert websocket.events[-1]["stage"] == "audio_validation"
+
+
+def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
+    turns = [
+        {"role": "user", "content": "old"},
+        {"role": "assistant", "content": "reply"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+
+    monkeypatch.setattr("app.main.get_request", lambda request_id: {"transcript": "hello", "conversation_turns": turns})
+
+    async def fake_pipeline(*args, **kwargs):
+        return {"events": [], "metrics": {}}
+
+    monkeypatch.setattr("app.main.run_text_pipeline", fake_pipeline)
+
+    payload = asyncio.run(replay_transcript("req_test"))
+
+    assert payload["source_conversation_turns"] == turns
