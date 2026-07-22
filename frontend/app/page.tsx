@@ -340,7 +340,7 @@ export default function Home() {
           <button className="mic-button" type="button" disabled={!canRecord && !isRecording} onClick={isRecording ? stopRecording : startRecording}>
             {isRecording ? "Stop" : "Voice"}
           </button>
-          <input
+          <textarea
             aria-label="Message"
             disabled={isSubmitting}
             onChange={(event) => setPrompt(event.target.value)}
