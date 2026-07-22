@@ -23,6 +23,13 @@ type ChatMessage = {
   audioUrl?: string;
 };
 
+type RecentRequest = {
+  request_id: string;
+  status: string;
+  transcript?: string;
+  total_ms?: number;
+};
+
 const newId = () => globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 const welcomeTurn = (): ChatMessage => ({
   id: newId(),
@@ -51,6 +58,8 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showRecent, setShowRecent] = useState(false);
+  const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
@@ -62,6 +71,19 @@ export default function Home() {
     setPrompt("");
     setAudioUrl("");
     setVoiceStatus("ready");
+  }
+
+  async function toggleRecentRequests() {
+    const next = !showRecent;
+    setShowRecent(next);
+    if (!next) return;
+    try {
+      const reply = await fetch(`${apiUrl}/requests?limit=8`);
+      const payload = await reply.json();
+      setRecentRequests(Array.isArray(payload.requests) ? payload.requests : []);
+    } catch {
+      setRecentRequests([]);
+    }
   }
 
   function conversationHistory() {
@@ -391,6 +413,9 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
+            <button type="button" onClick={() => void toggleRecentRequests()}>
+              Recent
+            </button>
             <button type="button" onClick={resetConversation}>
               Reset
             </button>
@@ -401,6 +426,23 @@ export default function Home() {
           <div className="connection-warning" role="status">
             Voice backend {connection}. Text chat may still work.
           </div>
+        ) : null}
+
+        {showRecent ? (
+          <aside className="recent-panel" aria-label="Recent requests">
+            {recentRequests.length ? (
+              recentRequests.map((request) => (
+                <div className="recent-row" key={request.request_id}>
+                  <span>{request.request_id}</span>
+                  <span>{request.status}</span>
+                  <span>{request.total_ms ?? "?"} ms</span>
+                  <p>{request.transcript || "No transcript"}</p>
+                </div>
+              ))
+            ) : (
+              <p className="empty-state">No recent requests.</p>
+            )}
+          </aside>
         ) : null}
 
         <div className="message-list" aria-live="polite" onScroll={handleMessageScroll} ref={messageListRef}>
