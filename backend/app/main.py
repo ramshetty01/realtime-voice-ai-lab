@@ -14,10 +14,19 @@ from app.pipeline import generate_response, llm_history, synthesize_speech, tran
 from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
 
+
+def configured_cors_origins() -> list[str]:
+    origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(",")]
+    origins = [origin for origin in origins if origin]
+    if not origins:
+        raise RuntimeError("CORS_ORIGINS must include at least one origin.")
+    return origins
+
+
 app = FastAPI(title="Realtime Voice AI Reliability Lab")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(","),
+    allow_origins=configured_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
