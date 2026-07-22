@@ -18,6 +18,7 @@ type ChatMessage = {
   createdAt: string;
   metrics?: { total_ms?: number; slowest_stage?: string };
   requestId?: string;
+  retryText?: string;
   status?: "thinking" | "done" | "failed";
   audioUrl?: string;
 };
@@ -207,7 +208,10 @@ export default function Home() {
     event.preventDefault();
     const message = prompt.trim();
     if (!message) return;
+    await sendChatMessage(message);
+  }
 
+  async function sendChatMessage(message: string) {
     const assistantId = newId();
     const history = conversationHistory();
     assistantIdRef.current = assistantId;
@@ -218,7 +222,7 @@ export default function Home() {
     setMessages((current) => [
       ...current,
       { id: newId(), role: "user", text: message, createdAt: new Date().toISOString() },
-      { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), status: "thinking" },
+      { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), retryText: message, status: "thinking" },
     ]);
 
     try {
@@ -407,6 +411,11 @@ export default function Home() {
                 <div className="message-metrics">
                   {message.metrics.total_ms ?? "?"} ms · slowest {message.metrics.slowest_stage ?? "unknown"}
                 </div>
+              ) : null}
+              {message.status === "failed" && message.retryText ? (
+                <button className="message-action" type="button" onClick={() => void sendChatMessage(message.retryText ?? "")}>
+                  Retry
+                </button>
               ) : null}
               {message.audioUrl ? (
                 <audio className="player" controls src={message.audioUrl}>
