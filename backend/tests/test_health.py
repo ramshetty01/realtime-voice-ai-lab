@@ -3,7 +3,18 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from app.main import ChatRequest, app, chat, configured_cors_origins, handle_audio, handle_client_event, health, replay_transcript
+from app.main import (
+    ChatRequest,
+    app,
+    chat,
+    configured_cors_origins,
+    handle_audio,
+    handle_client_event,
+    health,
+    positive_float_env,
+    positive_int_env,
+    replay_transcript,
+)
 from app.timing import Timer
 
 
@@ -24,6 +35,16 @@ def test_configured_cors_origins_rejects_blank_env(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError):
         configured_cors_origins()
+
+
+def test_positive_env_helpers_reject_invalid_values(monkeypatch) -> None:
+    monkeypatch.setenv("MAX_AUDIO_BYTES", "0")
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "abc")
+
+    with pytest.raises(RuntimeError):
+        positive_int_env("MAX_AUDIO_BYTES", 10)
+    with pytest.raises(RuntimeError):
+        positive_float_env("LLM_TIMEOUT_SECONDS", 45)
 
 
 def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
