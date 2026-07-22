@@ -15,6 +15,7 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  createdAt: string;
   audioUrl?: string;
 };
 
@@ -23,6 +24,7 @@ const welcomeTurn = (): ChatMessage => ({
   id: newId(),
   role: "assistant",
   text: welcomeMessage,
+  createdAt: "",
 });
 
 export default function Home() {
@@ -127,8 +129,8 @@ export default function Home() {
           setVoiceStatus("thinking");
           setMessages((current) => [
             ...current,
-            { id: newId(), role: "user", text: event.transcript ?? "" },
-            { id: assistantId, role: "assistant", text: "" },
+            { id: newId(), role: "user", text: event.transcript ?? "", createdAt: new Date().toISOString() },
+            { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString() },
           ]);
         }
         if (event.type === "llm_token" && event.token) {
@@ -199,8 +201,8 @@ export default function Home() {
     setAudioUrl("");
     setMessages((current) => [
       ...current,
-      { id: newId(), role: "user", text: message },
-      { id: assistantId, role: "assistant", text: "Thinking..." },
+      { id: newId(), role: "user", text: message, createdAt: new Date().toISOString() },
+      { id: assistantId, role: "assistant", text: "Thinking...", createdAt: new Date().toISOString() },
     ]);
 
     try {
@@ -362,7 +364,12 @@ export default function Home() {
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
               <div className="message-label">
-                <span>{message.role === "user" ? "You" : "AI"}</span>
+                <span>
+                  {message.role === "user" ? "You" : "AI"} ·{" "}
+                  {message.createdAt
+                    ? new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "Now"}
+                </span>
                 <button type="button" onClick={() => void copyMessage(message.text)}>
                   Copy
                 </button>
