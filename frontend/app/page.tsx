@@ -16,6 +16,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   createdAt: string;
+  metrics?: { total_ms?: number; slowest_stage?: string };
   requestId?: string;
   audioUrl?: string;
 };
@@ -145,7 +146,10 @@ export default function Home() {
           setAudioUrl(event.audio_url);
           updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
         }
-        if (event.type === "request_completed") setVoiceStatus("ready");
+        if (event.type === "request_completed") {
+          updateMessage(assistantIdRef.current, { metrics: event.metrics });
+          setVoiceStatus("ready");
+        }
         if (event.type === "request_failed") setVoiceStatus(event.message ?? "failed");
       });
     });
@@ -217,6 +221,7 @@ export default function Home() {
       updateMessage(assistantId, {
         text: payload.response ?? "",
         audioUrl: payload.audio_url ?? "",
+        metrics: payload.metrics,
         requestId: payload.request_id,
       });
       setAudioUrl(payload.audio_url ?? "");
@@ -381,6 +386,11 @@ export default function Home() {
                 </button>
               </div>
               <div className="message-text">{message.text}</div>
+              {message.metrics ? (
+                <div className="message-metrics">
+                  {message.metrics.total_ms ?? "?"} ms · slowest {message.metrics.slowest_stage ?? "unknown"}
+                </div>
+              ) : null}
               {message.audioUrl ? (
                 <audio className="player" controls src={message.audioUrl}>
                   <track kind="captions" />
