@@ -305,6 +305,7 @@ async def run_text_pipeline(
             "mime_type": mime_type,
             "duration_ms": duration_ms,
             "replay_of": replay_of,
+            "history": history or [],
             "conversation_turns": conversation_turns,
             "created_at": utc_timestamp(),
             **metrics,
