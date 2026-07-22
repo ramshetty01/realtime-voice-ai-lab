@@ -190,6 +190,25 @@ button:disabled {
   font-size: 10px;
 }
 
+.status-badge {
+  display: inline-block;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  padding: 3px 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.status-badge.done {
+  color: var(--green);
+}
+
+.status-badge.failed {
+  color: var(--orange);
+}
+
 .message-text {
   color: var(--ink);
   font-size: 16px;

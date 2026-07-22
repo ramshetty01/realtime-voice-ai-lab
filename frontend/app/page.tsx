@@ -18,6 +18,7 @@ type ChatMessage = {
   createdAt: string;
   metrics?: { total_ms?: number; slowest_stage?: string };
   requestId?: string;
+  status?: "thinking" | "done" | "failed";
   audioUrl?: string;
 };
 
@@ -132,7 +133,14 @@ export default function Home() {
           setMessages((current) => [
             ...current,
             { id: newId(), role: "user", text: event.transcript ?? "", createdAt: new Date().toISOString() },
-            { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), requestId: event.request_id },
+            {
+              id: assistantId,
+              role: "assistant",
+              text: "",
+              createdAt: new Date().toISOString(),
+              requestId: event.request_id,
+              status: "thinking",
+            },
           ]);
         }
         if (event.type === "llm_token" && event.token) {
@@ -147,10 +155,13 @@ export default function Home() {
           updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
         }
         if (event.type === "request_completed") {
-          updateMessage(assistantIdRef.current, { metrics: event.metrics });
+          updateMessage(assistantIdRef.current, { metrics: event.metrics, status: "done" });
           setVoiceStatus("ready");
         }
-        if (event.type === "request_failed") setVoiceStatus(event.message ?? "failed");
+        if (event.type === "request_failed") {
+          updateMessage(assistantIdRef.current, { status: "failed" });
+          setVoiceStatus(event.message ?? "failed");
+        }
       });
     });
 
@@ -207,7 +218,7 @@ export default function Home() {
     setMessages((current) => [
       ...current,
       { id: newId(), role: "user", text: message, createdAt: new Date().toISOString() },
-      { id: assistantId, role: "assistant", text: "Thinking...", createdAt: new Date().toISOString() },
+      { id: assistantId, role: "assistant", text: "Thinking...", createdAt: new Date().toISOString(), status: "thinking" },
     ]);
 
     try {
@@ -223,11 +234,12 @@ export default function Home() {
         audioUrl: payload.audio_url ?? "",
         metrics: payload.metrics,
         requestId: payload.request_id,
+        status: "done",
       });
       setAudioUrl(payload.audio_url ?? "");
       if (!payload.audio_url) setVoiceStatus("ready");
     } catch {
-      updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running." });
+      updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running.", status: "failed" });
       setVoiceStatus("failed");
     } finally {
       setIsSubmitting(false);
@@ -385,6 +397,7 @@ export default function Home() {
                   Copy
                 </button>
               </div>
+              {message.role === "assistant" && message.status ? <div className={`status-badge ${message.status}`}>{message.status}</div> : null}
               <div className="message-text">{message.text}</div>
               {message.metrics ? (
                 <div className="message-metrics">
