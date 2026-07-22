@@ -11,6 +11,7 @@ def test_save_request_persists_trace(tmp_path) -> None:
             "assistant_response": "hi",
             "audio_path": "recordings/req_test.webm",
             "mime_type": "audio/webm",
+            "duration_ms": 1234,
             "conversation_turns": [
                 {"role": "user", "content": "older"},
                 {"role": "assistant", "content": "reply"},
@@ -36,6 +37,7 @@ def test_save_request_persists_trace(tmp_path) -> None:
     trace = get_request("req_test", path=db_path)
     assert trace["assistant_response"] == "hi"
     assert trace["mime_type"] == "audio/webm"
+    assert trace["duration_ms"] == 1234
     assert trace["conversation_turns"][-1] == {"role": "assistant", "content": "hi"}
     assert recent_requests(path=db_path)[0]["audio_path"] == "recordings/req_test.webm"
     assert recent_requests(path=db_path)[0]["request_id"] == "req_test"
