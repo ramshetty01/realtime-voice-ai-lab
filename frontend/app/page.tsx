@@ -230,8 +230,7 @@ export default function Home() {
         void sendAudio();
       });
       recorder.start();
-      startSilenceMonitor(stream);
-      setVoiceStatus("recording");
+      setVoiceStatus(startSilenceMonitor(stream) ? "recording" : "manual stop");
     } catch {
       setVoiceStatus("microphone denied");
     }
@@ -245,7 +244,7 @@ export default function Home() {
   function startSilenceMonitor(stream: MediaStream) {
     const AudioContextCtor =
       window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
+    if (!AudioContextCtor) return false;
 
     const context = new AudioContextCtor();
     const analyser = context.createAnalyser();
@@ -270,6 +269,7 @@ export default function Home() {
     };
 
     silenceRafRef.current = requestAnimationFrame(tick);
+    return true;
   }
 
   function stopSilenceMonitor() {
@@ -306,7 +306,7 @@ export default function Home() {
     socket.send(await audio.arrayBuffer());
   }
 
-  const isRecording = voiceStatus === "recording";
+  const isRecording = voiceStatus === "recording" || voiceStatus === "manual stop";
   const canRecord = connection === "connected" && !isRecording && voiceStatus !== "sending";
 
   return (
