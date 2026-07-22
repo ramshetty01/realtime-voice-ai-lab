@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
           assistant_response text,
           audio_path text,
           replay_of text,
+          conversation_turns text,
           asr_ms integer,
           llm_total_ms integer,
           tts_total_ms integer,
@@ -29,6 +31,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     for column, definition in {
         "audio_path": "text",
         "replay_of": "text",
+        "conversation_turns": "text",
         "slowest_stage": "text",
     }.items():
         try:
@@ -44,8 +47,8 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
             """
             insert or replace into requests (
               request_id, status, transcript, assistant_response, audio_path, replay_of,
-              asr_ms, llm_total_ms, tts_total_ms, total_ms, slowest_stage, created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              conversation_turns, asr_ms, llm_total_ms, tts_total_ms, total_ms, slowest_stage, created_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 trace["request_id"],
@@ -54,6 +57,7 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
                 trace.get("assistant_response"),
                 trace.get("audio_path"),
                 trace.get("replay_of"),
+                json.dumps(trace.get("conversation_turns") or []),
                 trace.get("asr_ms"),
                 trace.get("llm_total_ms"),
                 trace.get("tts_total_ms"),
@@ -83,4 +87,13 @@ def get_request(request_id: str, path: Path = DB_PATH) -> dict[str, Any] | None:
     with connect(path) as db:
         db.row_factory = sqlite3.Row
         row = db.execute("select * from requests where request_id = ?", (request_id,)).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    trace = dict(row)
+    turns = trace.get("conversation_turns")
+    if isinstance(turns, str) and turns:
+        try:
+            trace["conversation_turns"] = json.loads(turns)
+        except json.JSONDecodeError:
+            trace["conversation_turns"] = []
+    return trace
