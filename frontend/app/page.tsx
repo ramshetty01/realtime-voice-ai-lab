@@ -16,6 +16,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   createdAt: string;
+  requestId?: string;
   audioUrl?: string;
 };
 
@@ -130,7 +131,7 @@ export default function Home() {
           setMessages((current) => [
             ...current,
             { id: newId(), role: "user", text: event.transcript ?? "", createdAt: new Date().toISOString() },
-            { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString() },
+            { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), requestId: event.request_id },
           ]);
         }
         if (event.type === "llm_token" && event.token) {
@@ -213,7 +214,11 @@ export default function Home() {
       });
       if (!reply.ok) throw new Error("Chat request failed.");
       const payload = await reply.json();
-      updateMessage(assistantId, { text: payload.response ?? "", audioUrl: payload.audio_url ?? "" });
+      updateMessage(assistantId, {
+        text: payload.response ?? "",
+        audioUrl: payload.audio_url ?? "",
+        requestId: payload.request_id,
+      });
       setAudioUrl(payload.audio_url ?? "");
       if (!payload.audio_url) setVoiceStatus("ready");
     } catch {
@@ -369,6 +374,7 @@ export default function Home() {
                   {message.createdAt
                     ? new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                     : "Now"}
+                  {message.requestId ? ` · ${message.requestId}` : ""}
                 </span>
                 <button type="button" onClick={() => void copyMessage(message.text)}>
                   Copy
