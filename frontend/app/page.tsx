@@ -181,6 +181,10 @@ export default function Home() {
     setShowScrollButton(false);
   }
 
+  async function copyMessage(text: string) {
+    await navigator.clipboard?.writeText(text);
+  }
+
   async function submitChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = prompt.trim();
@@ -357,7 +361,12 @@ export default function Home() {
         <div className="message-list" aria-live="polite" onScroll={handleMessageScroll} ref={messageListRef}>
           {messages.map((message) => (
             <article className={`message ${message.role}`} key={message.id}>
-              <div className="message-label">{message.role === "user" ? "You" : "AI"}</div>
+              <div className="message-label">
+                <span>{message.role === "user" ? "You" : "AI"}</span>
+                <button type="button" onClick={() => void copyMessage(message.text)}>
+                  Copy
+                </button>
+              </div>
               <div className="message-text">{message.text}</div>
               {message.audioUrl ? (
                 <audio className="player" controls src={message.audioUrl}>
