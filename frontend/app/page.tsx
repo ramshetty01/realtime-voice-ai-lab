@@ -149,7 +149,13 @@ export default function Home() {
       );
       socket.addEventListener("message", (message) => {
         if (typeof message.data !== "string") return;
-        const event = JSON.parse(message.data) as VoiceEvent;
+        let event: VoiceEvent;
+        try {
+          event = JSON.parse(message.data) as VoiceEvent;
+        } catch {
+          setVoiceStatus("bad server event");
+          return;
+        }
 
         if (event.type === "transcript_completed" && event.transcript) {
           const assistantId = newId();
