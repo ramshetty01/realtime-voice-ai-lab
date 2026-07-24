@@ -218,7 +218,7 @@ export default function Home() {
   useEffect(() => {
     if (!audioUrl) return;
     setVoiceStatus("speaking");
-    void audioRef.current?.play().catch(() => setVoiceStatus("playback failed"));
+    void audioRef.current?.play().catch(() => setVoiceStatus("playback blocked"));
   }, [audioUrl]);
 
   useEffect(() => {
