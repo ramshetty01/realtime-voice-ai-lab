@@ -478,7 +478,12 @@ export default function Home() {
                 </div>
               ) : null}
               {message.status === "failed" && message.retryText ? (
-                <button className="message-action" type="button" onClick={() => void sendChatMessage(message.retryText ?? "")}>
+                <button
+                  className="message-action"
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void sendChatMessage(message.retryText ?? "")}
+                >
                   Retry
                 </button>
               ) : null}
