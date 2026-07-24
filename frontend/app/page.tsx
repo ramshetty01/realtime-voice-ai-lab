@@ -237,7 +237,11 @@ export default function Home() {
   }
 
   async function copyMessage(text: string) {
-    await navigator.clipboard?.writeText(text);
+    if (!navigator.clipboard) {
+      setVoiceStatus("clipboard unavailable");
+      return;
+    }
+    await navigator.clipboard.writeText(text);
   }
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
