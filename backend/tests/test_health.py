@@ -13,6 +13,7 @@ from app.main import (
     health,
     positive_float_env,
     positive_int_env,
+    ready,
     replay_transcript,
 )
 from app.timing import Timer
@@ -24,6 +25,14 @@ def test_health_route_returns_status() -> None:
     assert payload["status"] == "ok"
     assert payload["service"] == "realtime-voice-ai-lab"
     assert "timestamp" in payload
+
+
+def test_ready_route_returns_runtime_config() -> None:
+    payload = ready()
+
+    assert payload["ready"] is True
+    assert payload["max_audio_bytes"] > 0
+    assert payload["timeouts"]["llm"] > 0
 
 
 def test_cors_middleware_is_configured() -> None:

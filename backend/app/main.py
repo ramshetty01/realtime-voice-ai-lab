@@ -72,6 +72,20 @@ def health() -> dict[str, str]:
     }
 
 
+@app.get("/ready")
+def ready() -> dict[str, object]:
+    return {
+        "ready": True,
+        "cors_origins": len(configured_cors_origins()),
+        "max_audio_bytes": positive_int_env("MAX_AUDIO_BYTES", 10 * 1024 * 1024),
+        "timeouts": {
+            "asr": positive_float_env("ASR_TIMEOUT_SECONDS", 30),
+            "llm": positive_float_env("LLM_TIMEOUT_SECONDS", 45),
+            "tts": positive_float_env("TTS_TIMEOUT_SECONDS", 30),
+        },
+    }
+
+
 @app.get("/requests")
 def list_requests(limit: int = 20) -> dict[str, object]:
     return {"requests": recent_requests(limit=min(limit, 100))}
