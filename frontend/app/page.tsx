@@ -8,8 +8,12 @@ const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/vo
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 const socketOpenTimeoutMs = 8000;
-const silenceThreshold = Number(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD ?? "0.025");
-const silenceDurationMs = Number(process.env.NEXT_PUBLIC_SILENCE_DURATION_MS ?? "1200");
+const numberSetting = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const silenceThreshold = numberSetting(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD, 0.025);
+const silenceDurationMs = numberSetting(process.env.NEXT_PUBLIC_SILENCE_DURATION_MS, 1200);
 
 type ChatMessage = {
   id: string;
