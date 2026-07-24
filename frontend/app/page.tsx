@@ -421,10 +421,10 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
-            <button type="button" onClick={() => void toggleRecentRequests()}>
+            <button type="button" aria-label="Toggle recent requests" onClick={() => void toggleRecentRequests()}>
               Recent
             </button>
-            <button type="button" onClick={resetConversation}>
+            <button type="button" aria-label="Reset conversation" onClick={resetConversation}>
               Reset
             </button>
           </div>
@@ -464,7 +464,7 @@ export default function Home() {
                     : "Now"}
                   {message.requestId ? ` · ${message.requestId}` : ""}
                 </span>
-                <button type="button" onClick={() => void copyMessage(message.text)}>
+                <button type="button" aria-label="Copy message text" onClick={() => void copyMessage(message.text)}>
                   Copy
                 </button>
               </div>
@@ -497,14 +497,20 @@ export default function Home() {
             </article>
           ))}
           {showScrollButton ? (
-            <button className="scroll-bottom" type="button" onClick={scrollMessagesToBottom}>
+            <button className="scroll-bottom" type="button" aria-label="Scroll to latest message" onClick={scrollMessagesToBottom}>
               Bottom
             </button>
           ) : null}
         </div>
 
         <form className="composer" onSubmit={submitChat}>
-          <button className="mic-button" type="button" disabled={!canRecord && !isRecording} onClick={isRecording ? stopRecording : startRecording}>
+          <button
+            className="mic-button"
+            type="button"
+            aria-label={isRecording ? "Stop voice recording" : "Start voice recording"}
+            disabled={!canRecord && !isRecording}
+            onClick={isRecording ? stopRecording : startRecording}
+          >
             {isRecording ? "Stop" : "Voice"}
           </button>
           <textarea
