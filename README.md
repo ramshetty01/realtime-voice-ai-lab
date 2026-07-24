@@ -79,6 +79,13 @@ The app stays free by default:
 - Conversation history keeps the latest `MAX_HISTORY_TURNS` turns by default.
 - Voice uploads larger than `MAX_AUDIO_BYTES` are rejected before ASR.
 
+Frontend env values:
+
+- `NEXT_PUBLIC_API_URL`: HTTP API base URL. Default: `http://127.0.0.1:8000`.
+- `NEXT_PUBLIC_VOICE_WS_URL`: voice websocket URL. Default: `ws://127.0.0.1:8000/ws/voice`.
+- `NEXT_PUBLIC_SILENCE_THRESHOLD`: auto-stop volume threshold. Default: `0.025`.
+- `NEXT_PUBLIC_SILENCE_DURATION_MS`: silence time before auto-stop. Default: `1200`.
+
 Optional local NVIDIA NIM:
 
 ```sh
