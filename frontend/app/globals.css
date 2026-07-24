@@ -142,6 +142,13 @@ button:disabled {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.recent-refresh {
+  justify-self: end;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
 .recent-row {
   display: grid;
   grid-template-columns: 1.2fr 0.7fr 0.7fr;
@@ -282,6 +289,8 @@ button:disabled {
 }
 
 .message-metrics {
+  display: grid;
+  gap: 4px;
   margin-top: 12px;
   color: var(--muted);
   font-size: 11px;

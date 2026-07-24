@@ -1,9 +1,10 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path("data/voice_lab.db")
+DB_PATH = Path(os.getenv("REQUEST_DB_PATH", "data/voice_lab.db"))
 
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:

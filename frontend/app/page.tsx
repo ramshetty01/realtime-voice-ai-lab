@@ -8,15 +8,26 @@ const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/vo
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 const socketOpenTimeoutMs = 8000;
-const silenceThreshold = Number(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD ?? "0.025");
-const silenceDurationMs = Number(process.env.NEXT_PUBLIC_SILENCE_DURATION_MS ?? "1200");
+const chatTimeoutMs = 45000;
+const numberSetting = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const silenceThreshold = numberSetting(process.env.NEXT_PUBLIC_SILENCE_THRESHOLD, 0.025);
+const silenceDurationMs = numberSetting(process.env.NEXT_PUBLIC_SILENCE_DURATION_MS, 1200);
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   createdAt: string;
-  metrics?: { total_ms?: number; slowest_stage?: string };
+  metrics?: {
+    asr_ms?: number;
+    llm_total_ms?: number;
+    tts_total_ms?: number;
+    total_ms?: number;
+    slowest_stage?: string;
+  };
   requestId?: string;
   retryText?: string;
   status?: "thinking" | "done" | "degraded" | "failed";
@@ -60,6 +71,7 @@ export default function Home() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showRecent, setShowRecent] = useState(false);
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
@@ -78,7 +90,10 @@ export default function Home() {
   async function toggleRecentRequests() {
     const next = !showRecent;
     setShowRecent(next);
-    if (!next) return;
+    if (next) await loadRecentRequests();
+  }
+
+  async function loadRecentRequests() {
     try {
       const reply = await fetch(`${apiUrl}/requests?limit=8`);
       const payload = await reply.json();
@@ -213,7 +228,7 @@ export default function Home() {
   useEffect(() => {
     if (!audioUrl) return;
     setVoiceStatus("speaking");
-    void audioRef.current?.play().catch(() => setVoiceStatus("playback failed"));
+    void audioRef.current?.play().catch(() => setVoiceStatus("playback blocked"));
   }, [audioUrl]);
 
   useEffect(() => {
@@ -232,8 +247,14 @@ export default function Home() {
     setShowScrollButton(false);
   }
 
-  async function copyMessage(text: string) {
-    await navigator.clipboard?.writeText(text);
+  async function copyMessage(id: string, text: string) {
+    if (!navigator.clipboard) {
+      setVoiceStatus("clipboard unavailable");
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    window.setTimeout(() => setCopiedMessageId(""), 1400);
   }
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
@@ -257,10 +278,13 @@ export default function Home() {
       { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), retryText: message, status: "thinking" },
     ]);
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), chatTimeoutMs);
     try {
       const reply = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ message, history }),
       });
       if (!reply.ok) throw new Error("Chat request failed.");
@@ -278,6 +302,7 @@ export default function Home() {
       updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running.", status: "failed" });
       setVoiceStatus("failed");
     } finally {
+      window.clearTimeout(timeoutId);
       setIsSubmitting(false);
     }
   }
@@ -324,7 +349,8 @@ export default function Home() {
   }
 
   function stopRecording() {
-    recorderRef.current?.stop();
+    if (recorderRef.current?.state !== "recording") return;
+    recorderRef.current.stop();
     setVoiceStatus("sending");
   }
 
@@ -377,6 +403,12 @@ export default function Home() {
   async function retryVoice() {
     if (!lastVoiceAudioRef.current) return;
     setVoiceStatus("sending");
+    try {
+      await connectVoiceSocket();
+    } catch {
+      setVoiceStatus("disconnected");
+      return;
+    }
     await sendAudioBlob(lastVoiceAudioRef.current, lastVoiceDurationRef.current);
   }
 
@@ -421,10 +453,10 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
-            <button type="button" onClick={() => void toggleRecentRequests()}>
+            <button type="button" aria-label="Toggle recent requests" onClick={() => void toggleRecentRequests()}>
               Recent
             </button>
-            <button type="button" onClick={resetConversation}>
+            <button type="button" aria-label="Reset conversation" onClick={resetConversation}>
               Reset
             </button>
           </div>
@@ -438,6 +470,9 @@ export default function Home() {
 
         {showRecent ? (
           <aside className="recent-panel" aria-label="Recent requests">
+            <button className="recent-refresh" type="button" onClick={() => void loadRecentRequests()}>
+              Refresh
+            </button>
             {recentRequests.length ? (
               recentRequests.map((request) => (
                 <div className="recent-row" key={request.request_id}>
@@ -464,8 +499,8 @@ export default function Home() {
                     : "Now"}
                   {message.requestId ? ` · ${message.requestId}` : ""}
                 </span>
-                <button type="button" onClick={() => void copyMessage(message.text)}>
-                  Copy
+                <button type="button" aria-label="Copy message text" onClick={() => void copyMessage(message.id, message.text)}>
+                  {copiedMessageId === message.id ? "Copied" : "Copy"}
                 </button>
               </div>
               {message.role === "assistant" && message.status ? <div className={`status-badge ${message.status}`}>{message.status}</div> : null}
@@ -477,6 +512,10 @@ export default function Home() {
               {message.metrics ? (
                 <div className="message-metrics">
                   {message.metrics.total_ms ?? "?"} ms · slowest {message.metrics.slowest_stage ?? "unknown"}
+                  <span>
+                    ASR {message.metrics.asr_ms ?? "-"} · LLM {message.metrics.llm_total_ms ?? "-"} · TTS{" "}
+                    {message.metrics.tts_total_ms ?? "-"}
+                  </span>
                 </div>
               ) : null}
               {message.status === "failed" && message.retryText ? (
@@ -497,14 +536,20 @@ export default function Home() {
             </article>
           ))}
           {showScrollButton ? (
-            <button className="scroll-bottom" type="button" onClick={scrollMessagesToBottom}>
+            <button className="scroll-bottom" type="button" aria-label="Scroll to latest message" onClick={scrollMessagesToBottom}>
               Bottom
             </button>
           ) : null}
         </div>
 
         <form className="composer" onSubmit={submitChat}>
-          <button className="mic-button" type="button" disabled={!canRecord && !isRecording} onClick={isRecording ? stopRecording : startRecording}>
+          <button
+            className="mic-button"
+            type="button"
+            aria-label={isRecording ? "Stop voice recording" : "Start voice recording"}
+            disabled={!canRecord && !isRecording}
+            onClick={isRecording ? stopRecording : startRecording}
+          >
             {isRecording ? "Stop" : "Voice"}
           </button>
           <textarea

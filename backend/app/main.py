@@ -72,6 +72,20 @@ def health() -> dict[str, str]:
     }
 
 
+@app.get("/ready")
+def ready() -> dict[str, object]:
+    return {
+        "ready": True,
+        "cors_origins": len(configured_cors_origins()),
+        "max_audio_bytes": positive_int_env("MAX_AUDIO_BYTES", 10 * 1024 * 1024),
+        "timeouts": {
+            "asr": positive_float_env("ASR_TIMEOUT_SECONDS", 30),
+            "llm": positive_float_env("LLM_TIMEOUT_SECONDS", 45),
+            "tts": positive_float_env("TTS_TIMEOUT_SECONDS", 30),
+        },
+    }
+
+
 @app.get("/requests")
 def list_requests(limit: int = 20) -> dict[str, object]:
     return {"requests": recent_requests(limit=min(limit, 100))}
@@ -169,13 +183,21 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
         return {}
 
     if payload.get("type") != "client_audio_ready":
+        await websocket.send_json(
+            voice_event(
+                "request_failed",
+                request_id=request_id,
+                stage="audio_validation",
+                message="Unknown websocket event type.",
+            )
+        )
         return {}
 
     history = sanitize_history(payload.get("history"))
     return {
         "mime_type": payload.get("mime_type"),
-        "size": payload.get("size"),
-        "duration_ms": payload.get("duration_ms"),
+        "size": positive_metadata_int(payload.get("size")),
+        "duration_ms": positive_metadata_int(payload.get("duration_ms")),
         "history": history,
     }
 
@@ -402,6 +424,16 @@ def sanitize_history(history: object | None) -> list[dict[str, str]]:
         if role in {"user", "assistant"} and content:
             turns.append({"role": role, "content": content[:2000]})
     return turns
+
+
+def positive_metadata_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def max_history_turns() -> int:

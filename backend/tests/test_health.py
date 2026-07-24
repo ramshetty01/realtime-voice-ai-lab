@@ -13,6 +13,7 @@ from app.main import (
     health,
     positive_float_env,
     positive_int_env,
+    ready,
     replay_transcript,
 )
 from app.timing import Timer
@@ -24,6 +25,14 @@ def test_health_route_returns_status() -> None:
     assert payload["status"] == "ok"
     assert payload["service"] == "realtime-voice-ai-lab"
     assert "timestamp" in payload
+
+
+def test_ready_route_returns_runtime_config() -> None:
+    payload = ready()
+
+    assert payload["ready"] is True
+    assert payload["max_audio_bytes"] > 0
+    assert payload["timeouts"]["llm"] > 0
 
 
 def test_cors_middleware_is_configured() -> None:
@@ -116,6 +125,51 @@ def test_invalid_websocket_json_returns_failure() -> None:
     assert metadata == {}
     assert websocket.events[-1]["type"] == "request_failed"
     assert websocket.events[-1]["stage"] == "audio_validation"
+
+
+def test_unknown_websocket_event_returns_failure() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    websocket = FakeWebSocket()
+
+    metadata = asyncio.run(handle_client_event(websocket, "req_test", '{"type":"unknown"}'))
+
+    assert metadata == {}
+    assert websocket.events[-1]["message"] == "Unknown websocket event type."
+
+
+def test_websocket_metadata_numbers_are_sanitized() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    metadata = asyncio.run(
+        handle_client_event(
+            FakeWebSocket(),
+            "req_test",
+            '{"type":"client_audio_ready","size":"12","duration_ms":"34"}',
+        )
+    )
+    invalid = asyncio.run(
+        handle_client_event(
+            FakeWebSocket(),
+            "req_test",
+            '{"type":"client_audio_ready","size":"nope","duration_ms":false}',
+        )
+    )
+
+    assert metadata["size"] == 12
+    assert metadata["duration_ms"] == 34
+    assert invalid["size"] is None
+    assert invalid["duration_ms"] is None
 
 
 def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
