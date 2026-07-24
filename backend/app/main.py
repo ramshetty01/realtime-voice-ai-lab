@@ -183,6 +183,14 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
         return {}
 
     if payload.get("type") != "client_audio_ready":
+        await websocket.send_json(
+            voice_event(
+                "request_failed",
+                request_id=request_id,
+                stage="audio_validation",
+                message="Unknown websocket event type.",
+            )
+        )
         return {}
 
     history = sanitize_history(payload.get("history"))
