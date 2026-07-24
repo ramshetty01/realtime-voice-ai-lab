@@ -275,6 +275,12 @@ button:disabled {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .message-skeleton {
+    animation: none;
+  }
+}
+
 .message-metrics {
   margin-top: 12px;
   color: var(--muted);
