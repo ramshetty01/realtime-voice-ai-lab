@@ -86,6 +86,9 @@ Frontend env values:
 - `NEXT_PUBLIC_SILENCE_THRESHOLD`: auto-stop volume threshold. Default: `0.025`.
 - `NEXT_PUBLIC_SILENCE_DURATION_MS`: silence time before auto-stop. Default: `1200`.
 
+Request traces are stored in SQLite at `data/voice_lab.db` by default. Set
+`REQUEST_DB_PATH=/path/to/voice_lab.db` to use a different database file.
+
 Optional local NVIDIA NIM:
 
 ```sh
