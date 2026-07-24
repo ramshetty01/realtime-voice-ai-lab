@@ -477,6 +477,10 @@ export default function Home() {
               {message.metrics ? (
                 <div className="message-metrics">
                   {message.metrics.total_ms ?? "?"} ms · slowest {message.metrics.slowest_stage ?? "unknown"}
+                  <span>
+                    ASR {message.metrics.asr_ms ?? "-"} · LLM {message.metrics.llm_total_ms ?? "-"} · TTS{" "}
+                    {message.metrics.tts_total_ms ?? "-"}
+                  </span>
                 </div>
               ) : null}
               {message.status === "failed" && message.retryText ? (

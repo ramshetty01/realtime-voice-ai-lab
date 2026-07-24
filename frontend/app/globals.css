@@ -282,6 +282,8 @@ button:disabled {
 }
 
 .message-metrics {
+  display: grid;
+  gap: 4px;
   margin-top: 12px;
   color: var(--muted);
   font-size: 11px;
