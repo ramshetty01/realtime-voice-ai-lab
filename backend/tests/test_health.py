@@ -143,6 +143,35 @@ def test_unknown_websocket_event_returns_failure() -> None:
     assert websocket.events[-1]["message"] == "Unknown websocket event type."
 
 
+def test_websocket_metadata_numbers_are_sanitized() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    metadata = asyncio.run(
+        handle_client_event(
+            FakeWebSocket(),
+            "req_test",
+            '{"type":"client_audio_ready","size":"12","duration_ms":"34"}',
+        )
+    )
+    invalid = asyncio.run(
+        handle_client_event(
+            FakeWebSocket(),
+            "req_test",
+            '{"type":"client_audio_ready","size":"nope","duration_ms":false}',
+        )
+    )
+
+    assert metadata["size"] == 12
+    assert metadata["duration_ms"] == 34
+    assert invalid["size"] is None
+    assert invalid["duration_ms"] is None
+
+
 def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
     turns = [
         {"role": "user", "content": "old"},
