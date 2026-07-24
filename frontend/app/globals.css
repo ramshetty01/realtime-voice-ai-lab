@@ -245,6 +245,10 @@ button:disabled {
   color: var(--green);
 }
 
+.status-badge.degraded {
+  color: #ffd36a;
+}
+
 .status-badge.failed {
   color: var(--orange);
 }
