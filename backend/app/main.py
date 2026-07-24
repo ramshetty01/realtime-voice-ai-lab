@@ -196,8 +196,8 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
     history = sanitize_history(payload.get("history"))
     return {
         "mime_type": payload.get("mime_type"),
-        "size": payload.get("size"),
-        "duration_ms": payload.get("duration_ms"),
+        "size": positive_metadata_int(payload.get("size")),
+        "duration_ms": positive_metadata_int(payload.get("duration_ms")),
         "history": history,
     }
 
@@ -424,6 +424,16 @@ def sanitize_history(history: object | None) -> list[dict[str, str]]:
         if role in {"user", "assistant"} and content:
             turns.append({"role": role, "content": content[:2000]})
     return turns
+
+
+def positive_metadata_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def max_history_turns() -> int:
