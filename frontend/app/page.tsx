@@ -8,6 +8,7 @@ const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/vo
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const welcomeMessage = "Ask me anything, or use the microphone to talk.";
 const socketOpenTimeoutMs = 8000;
+const chatTimeoutMs = 45000;
 const numberSetting = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -268,10 +269,13 @@ export default function Home() {
       { id: assistantId, role: "assistant", text: "", createdAt: new Date().toISOString(), retryText: message, status: "thinking" },
     ]);
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), chatTimeoutMs);
     try {
       const reply = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ message, history }),
       });
       if (!reply.ok) throw new Error("Chat request failed.");
@@ -289,6 +293,7 @@ export default function Home() {
       updateMessage(assistantId, { text: "The chat request failed. Check that the backend is running.", status: "failed" });
       setVoiceStatus("failed");
     } finally {
+      window.clearTimeout(timeoutId);
       setIsSubmitting(false);
     }
   }
