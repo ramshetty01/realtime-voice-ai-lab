@@ -21,7 +21,13 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   createdAt: string;
-  metrics?: { total_ms?: number; slowest_stage?: string };
+  metrics?: {
+    asr_ms?: number;
+    llm_total_ms?: number;
+    tts_total_ms?: number;
+    total_ms?: number;
+    slowest_stage?: string;
+  };
   requestId?: string;
   retryText?: string;
   status?: "thinking" | "done" | "degraded" | "failed";
