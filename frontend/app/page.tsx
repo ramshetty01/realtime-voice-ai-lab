@@ -64,6 +64,7 @@ export default function Home() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showRecent, setShowRecent] = useState(false);
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
@@ -236,12 +237,14 @@ export default function Home() {
     setShowScrollButton(false);
   }
 
-  async function copyMessage(text: string) {
+  async function copyMessage(id: string, text: string) {
     if (!navigator.clipboard) {
       setVoiceStatus("clipboard unavailable");
       return;
     }
     await navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    window.setTimeout(() => setCopiedMessageId(""), 1400);
   }
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
@@ -472,8 +475,8 @@ export default function Home() {
                     : "Now"}
                   {message.requestId ? ` · ${message.requestId}` : ""}
                 </span>
-                <button type="button" aria-label="Copy message text" onClick={() => void copyMessage(message.text)}>
-                  Copy
+                <button type="button" aria-label="Copy message text" onClick={() => void copyMessage(message.id, message.text)}>
+                  {copiedMessageId === message.id ? "Copied" : "Copy"}
                 </button>
               </div>
               {message.role === "assistant" && message.status ? <div className={`status-badge ${message.status}`}>{message.status}</div> : null}
