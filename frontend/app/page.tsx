@@ -84,7 +84,10 @@ export default function Home() {
   async function toggleRecentRequests() {
     const next = !showRecent;
     setShowRecent(next);
-    if (!next) return;
+    if (next) await loadRecentRequests();
+  }
+
+  async function loadRecentRequests() {
     try {
       const reply = await fetch(`${apiUrl}/requests?limit=8`);
       const payload = await reply.json();
@@ -461,6 +464,9 @@ export default function Home() {
 
         {showRecent ? (
           <aside className="recent-panel" aria-label="Recent requests">
+            <button className="recent-refresh" type="button" onClick={() => void loadRecentRequests()}>
+              Refresh
+            </button>
             {recentRequests.length ? (
               recentRequests.map((request) => (
                 <div className="recent-row" key={request.request_id}>
