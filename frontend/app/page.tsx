@@ -70,6 +70,8 @@ export default function Home() {
     setMessages([welcomeTurn()]);
     setPrompt("");
     setAudioUrl("");
+    lastVoiceAudioRef.current = null;
+    lastVoiceDurationRef.current = 0;
     setVoiceStatus("ready");
   }
 
