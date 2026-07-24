@@ -335,7 +335,8 @@ export default function Home() {
   }
 
   function stopRecording() {
-    recorderRef.current?.stop();
+    if (recorderRef.current?.state !== "recording") return;
+    recorderRef.current.stop();
     setVoiceStatus("sending");
   }
 
