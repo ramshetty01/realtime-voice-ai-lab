@@ -388,6 +388,12 @@ export default function Home() {
   async function retryVoice() {
     if (!lastVoiceAudioRef.current) return;
     setVoiceStatus("sending");
+    try {
+      await connectVoiceSocket();
+    } catch {
+      setVoiceStatus("disconnected");
+      return;
+    }
     await sendAudioBlob(lastVoiceAudioRef.current, lastVoiceDurationRef.current);
   }
 
