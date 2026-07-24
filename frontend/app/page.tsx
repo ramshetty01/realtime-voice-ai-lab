@@ -19,7 +19,7 @@ type ChatMessage = {
   metrics?: { total_ms?: number; slowest_stage?: string };
   requestId?: string;
   retryText?: string;
-  status?: "thinking" | "done" | "failed";
+  status?: "thinking" | "done" | "degraded" | "failed";
   audioUrl?: string;
 };
 
@@ -262,7 +262,7 @@ export default function Home() {
         audioUrl: payload.audio_url ?? "",
         metrics: payload.metrics,
         requestId: payload.request_id,
-        status: "done",
+        status: payload.status === "degraded" ? "degraded" : "done",
       });
       setAudioUrl(payload.audio_url ?? "");
       if (!payload.audio_url) setVoiceStatus("ready");
