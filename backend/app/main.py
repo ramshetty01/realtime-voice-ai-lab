@@ -94,6 +94,7 @@ async def chat(payload: ChatRequest) -> dict[str, object]:
         "request_id": result["request_id"],
         "transcript": payload.message,
         "response": response,
+        "status": result["status"],
         "audio_url": audio_url,
         "events": result["events"],
         "metrics": result["metrics"],
@@ -344,7 +345,7 @@ async def run_text_pipeline(
         }
     )
     log_event("request_completed", request_id=request_id, status=status, **metrics)
-    return {"request_id": request_id, "events": events, "metrics": metrics}
+    return {"request_id": request_id, "status": status, "events": events, "metrics": metrics}
 
 
 def build_metrics(asr_ms: int | None, llm_ms: int | None, tts_ms: int | None, total_ms: int) -> dict[str, object]:

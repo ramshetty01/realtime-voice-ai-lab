@@ -52,6 +52,7 @@ def test_chat_route_runs_text_pipeline(monkeypatch) -> None:
     payload = asyncio.run(chat(ChatRequest(message="hello")))
     assert payload["transcript"] == "hello"
     assert payload["response"]
+    assert payload["status"] in {"completed", "degraded"}
     assert str(payload["audio_url"]).startswith("data:audio/")
 
 
