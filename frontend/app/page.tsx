@@ -39,6 +39,14 @@ type RecentRequest = {
   status: string;
   transcript?: string;
   total_ms?: number;
+  failure_stage?: string;
+  error_message?: string;
+};
+
+type RequestDetail = RecentRequest & {
+  assistant_response?: string;
+  audio_path?: string;
+  conversation_turns?: { role: string; content: string }[];
 };
 
 const newId = () => globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -71,6 +79,11 @@ export default function Home() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showRecent, setShowRecent] = useState(false);
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
+  const [recentError, setRecentError] = useState("");
+  const [recentFilter, setRecentFilter] = useState("all");
+  const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [requestDetail, setRequestDetail] = useState<RequestDetail | null>(null);
+  const [backendHealth, setBackendHealth] = useState("checking");
   const [copiedMessageId, setCopiedMessageId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
 
@@ -94,13 +107,38 @@ export default function Home() {
   }
 
   async function loadRecentRequests() {
+    setRecentError("");
     try {
       const reply = await fetch(`${apiUrl}/requests?limit=8`);
+      if (!reply.ok) throw new Error("Recent requests failed.");
       const payload = await reply.json();
       setRecentRequests(Array.isArray(payload.requests) ? payload.requests : []);
     } catch {
+      setRecentError("Could not load recent requests.");
       setRecentRequests([]);
     }
+  }
+
+  async function loadRequestDetail(requestId: string) {
+    setSelectedRequestId(requestId);
+    const reply = await fetch(`${apiUrl}/requests/${requestId}`);
+    if (!reply.ok) return;
+    setRequestDetail(await reply.json());
+  }
+
+  async function replayRequest(requestId: string, kind: "transcript" | "audio") {
+    const reply = await fetch(`${apiUrl}/requests/${requestId}/replay-${kind}`, { method: "POST" });
+    if (!reply.ok) return;
+    const payload = await reply.json();
+    const response = payload.events?.find((event: VoiceEvent) => event.type === "llm_completed")?.response ?? "Replay completed.";
+    setMessages((current) => [
+      ...current,
+      { id: newId(), role: "assistant", text: response, createdAt: new Date().toISOString(), requestId: payload.request_id, status: "done" },
+    ]);
+  }
+
+  function downloadTrace(requestId: string) {
+    window.open(`${apiUrl}/requests/${requestId}/export`, "_blank");
   }
 
   function conversationHistory() {
@@ -218,6 +256,9 @@ export default function Home() {
 
   useEffect(() => {
     void connectVoiceSocket().catch(() => undefined);
+    void fetch(`${apiUrl}/health`)
+      .then((reply) => setBackendHealth(reply.ok ? "online" : "degraded"))
+      .catch(() => setBackendHealth("offline"));
     return () => {
       socketReadyPromiseRef.current = null;
       socketRef.current?.close();
@@ -327,23 +368,26 @@ export default function Home() {
       setVoiceStatus("recording unsupported");
       return;
     }
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const activeStream = stream;
       chunksRef.current = [];
       startedAtRef.current = performance.now();
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(activeStream);
       recorderRef.current = recorder;
       recorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       });
       recorder.addEventListener("stop", () => {
         stopSilenceMonitor();
-        stream.getTracks().forEach((track) => track.stop());
+        activeStream.getTracks().forEach((track) => track.stop());
         void sendAudio();
       });
       recorder.start();
-      setVoiceStatus(startSilenceMonitor(stream) ? "recording" : "manual stop");
+      setVoiceStatus(startSilenceMonitor(activeStream) ? "recording" : "manual stop");
     } catch {
+      stream?.getTracks().forEach((track) => track.stop());
       setVoiceStatus("microphone denied");
     }
   }
@@ -442,6 +486,8 @@ export default function Home() {
   const canRetryVoice = Boolean(
     lastVoiceAudioRef.current && (voiceStatus.toLowerCase().includes("failed") || voiceStatus === "disconnected")
   );
+  const filteredRequests =
+    recentFilter === "all" ? recentRequests : recentRequests.filter((request) => request.status === recentFilter);
 
   return (
     <main className="shell">
@@ -453,6 +499,7 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="voice-state">{isRecording ? "Listening" : voiceStatus}</span>
+            <span className="health-state">API {backendHealth}</span>
             <button type="button" aria-label="Toggle recent requests" onClick={() => void toggleRecentRequests()}>
               Recent
             </button>
@@ -470,21 +517,50 @@ export default function Home() {
 
         {showRecent ? (
           <aside className="recent-panel" aria-label="Recent requests">
-            <button className="recent-refresh" type="button" onClick={() => void loadRecentRequests()}>
-              Refresh
-            </button>
-            {recentRequests.length ? (
-              recentRequests.map((request) => (
+            <div className="recent-toolbar">
+              <select aria-label="Filter recent requests" value={recentFilter} onChange={(event) => setRecentFilter(event.target.value)}>
+                <option value="all">All</option>
+                <option value="completed">Completed</option>
+                <option value="degraded">Degraded</option>
+                <option value="failed">Failed</option>
+              </select>
+              <button className="recent-refresh" type="button" onClick={() => void loadRecentRequests()}>
+                Refresh
+              </button>
+            </div>
+            {recentError ? <p className="empty-state">{recentError}</p> : null}
+            {filteredRequests.length ? (
+              filteredRequests.map((request) => (
                 <div className="recent-row" key={request.request_id}>
                   <span>{request.request_id}</span>
                   <span>{request.status}</span>
                   <span>{request.total_ms ?? "?"} ms</span>
+                  <button type="button" onClick={() => void loadRequestDetail(request.request_id)}>
+                    Details
+                  </button>
                   <p>{request.transcript || "No transcript"}</p>
+                  {request.error_message ? <p>{request.failure_stage}: {request.error_message}</p> : null}
                 </div>
               ))
             ) : (
-              <p className="empty-state">No recent requests.</p>
+              !recentError ? <p className="empty-state">No recent requests.</p> : null
             )}
+            {requestDetail && selectedRequestId ? (
+              <div className="request-detail">
+                <p>{requestDetail.assistant_response || requestDetail.error_message || "No response saved."}</p>
+                <button type="button" onClick={() => void replayRequest(selectedRequestId, "transcript")}>
+                  Replay text
+                </button>
+                {requestDetail.audio_path ? (
+                  <button type="button" onClick={() => void replayRequest(selectedRequestId, "audio")}>
+                    Replay audio
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => downloadTrace(selectedRequestId)}>
+                  Export JSON
+                </button>
+              </div>
+            ) : null}
           </aside>
         ) : null}
 

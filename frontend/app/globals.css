@@ -30,11 +30,13 @@ body {
 }
 
 button,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
-button {
+button,
+select {
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 0;
@@ -43,6 +45,13 @@ button {
   font-weight: 800;
   cursor: pointer;
   text-transform: uppercase;
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 button:hover:not(:disabled) {
@@ -110,6 +119,13 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.health-state {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -142,8 +158,14 @@ button:disabled {
   background: rgba(0, 0, 0, 0.18);
 }
 
+.recent-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.recent-toolbar select,
 .recent-refresh {
-  justify-self: end;
   min-height: 30px;
   padding: 0 10px;
   font-size: 10px;
@@ -151,7 +173,7 @@ button:disabled {
 
 .recent-row {
   display: grid;
-  grid-template-columns: 1.2fr 0.7fr 0.7fr;
+  grid-template-columns: 1.2fr 0.7fr 0.7fr auto;
   gap: 10px;
   border: 1px solid var(--line);
   padding: 10px;
@@ -159,6 +181,13 @@ button:disabled {
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.recent-row button,
+.request-detail button {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 .recent-row p {
@@ -177,6 +206,22 @@ button:disabled {
   font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.request-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.request-detail p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .message-list {

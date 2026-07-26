@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.main import (
@@ -14,7 +15,10 @@ from app.main import (
     positive_float_env,
     positive_int_env,
     ready,
+    replay_audio,
     replay_transcript,
+    safe_recording_path,
+    save_audio,
 )
 from app.timing import Timer
 
@@ -85,6 +89,41 @@ def test_audio_size_limit_rejects_large_payload(monkeypatch) -> None:
 
     assert websocket.events[0]["type"] == "request_failed"
     assert websocket.events[0]["stage"] == "audio_validation"
+
+
+def test_empty_audio_persists_failed_trace(monkeypatch, tmp_path) -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    saved: dict[str, object] = {}
+    monkeypatch.setattr("app.main.save_request", lambda trace: saved.update(trace))
+
+    asyncio.run(handle_audio(FakeWebSocket(), "req_test", b"", {}, Timer()))
+
+    assert saved["status"] == "failed"
+    assert saved["failure_stage"] == "audio_validation"
+
+
+def test_oversized_audio_persists_failed_trace(monkeypatch) -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.events: list[dict[str, object]] = []
+
+        async def send_json(self, event: dict[str, object]) -> None:
+            self.events.append(event)
+
+    saved: dict[str, object] = {}
+    monkeypatch.setenv("MAX_AUDIO_BYTES", "2")
+    monkeypatch.setattr("app.main.save_request", lambda trace: saved.update(trace))
+
+    asyncio.run(handle_audio(FakeWebSocket(), "req_test", b"abc", {}, Timer()))
+
+    assert saved["status"] == "failed"
+    assert saved["error_message"] == "Recorded audio is too large for this demo."
 
 
 def test_handle_audio_completes_after_degraded_tts(monkeypatch) -> None:
@@ -194,3 +233,30 @@ def test_replay_transcript_returns_source_turns(monkeypatch) -> None:
 
     assert payload["source_conversation_turns"] == turns
     assert captured["history"] == turns[:2]
+
+
+def test_save_audio_uses_mime_extension(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    path = save_audio("req_test", b"abc", "audio/wav")
+
+    assert path == "recordings/req_test.wav"
+
+
+def test_replay_audio_rejects_paths_outside_recordings(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    outside = tmp_path / "outside.webm"
+    outside.write_bytes(b"abc")
+    monkeypatch.setattr("app.main.get_request", lambda request_id: {"audio_path": str(outside)})
+
+    with pytest.raises(HTTPException):
+        asyncio.run(replay_audio("req_test"))
+
+
+def test_safe_recording_path_allows_recordings(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "recordings" / "req_test.webm"
+    path.parent.mkdir()
+    path.write_bytes(b"abc")
+
+    assert safe_recording_path("recordings/req_test.webm") == path
