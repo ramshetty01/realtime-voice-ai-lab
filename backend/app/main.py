@@ -6,6 +6,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.events import new_request_id, utc_timestamp, voice_event
@@ -99,6 +100,12 @@ def request_detail(request_id: str) -> dict[str, object]:
     return trace
 
 
+@app.get("/requests/{request_id}/export")
+def export_request(request_id: str) -> JSONResponse:
+    trace = request_detail(request_id)
+    return JSONResponse(trace, headers={"content-disposition": f'attachment; filename="{request_id}.json"'})
+
+
 @app.post("/chat")
 async def chat(payload: ChatRequest) -> dict[str, object]:
     result = await run_text_pipeline(payload.message, history=[turn.model_dump() for turn in payload.history])
@@ -131,9 +138,12 @@ async def replay_transcript(request_id: str) -> dict[str, object]:
 async def replay_audio(request_id: str) -> dict[str, object]:
     trace = get_request(request_id)
     audio_path = trace.get("audio_path") if trace else None
-    if not audio_path or not Path(str(audio_path)).exists():
+    if not audio_path:
         raise HTTPException(status_code=404, detail="Request audio not found")
-    return await run_voice_pipeline(Path(str(audio_path)).read_bytes(), {}, replay_of=request_id)
+    path = safe_recording_path(str(audio_path))
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Request audio not found")
+    return await run_voice_pipeline(path.read_bytes(), {}, replay_of=request_id)
 
 
 @app.websocket("/ws/voice")
@@ -206,26 +216,16 @@ async def handle_audio(
     websocket: WebSocket, request_id: str, audio: bytes, metadata: dict[str, object], total: Timer
 ) -> None:
     if not audio:
-        event = voice_event(
-            "request_failed",
-            request_id=request_id,
-            stage="audio_validation",
-            message="Recorded audio was empty.",
-        )
+        result = save_failure(request_id, "audio_validation", "Recorded audio was empty.", total, None, None)
+        event = result["events"][0]
         log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
         await websocket.send_json(event)
         return
 
     max_audio_bytes = positive_int_env("MAX_AUDIO_BYTES", 10 * 1024 * 1024)
     if len(audio) > max_audio_bytes:
-        event = voice_event(
-            "request_failed",
-            request_id=request_id,
-            stage="audio_validation",
-            message="Recorded audio is too large for this demo.",
-            audio_size=len(audio),
-            max_audio_bytes=max_audio_bytes,
-        )
+        result = save_failure(request_id, "audio_validation", "Recorded audio is too large for this demo.", total, None, None)
+        event = result["events"][0] | {"audio_size": len(audio), "max_audio_bytes": max_audio_bytes}
         log_event("request_failed", request_id=request_id, stage="audio_validation", message=event["message"])
         await websocket.send_json(event)
         return
@@ -265,7 +265,11 @@ async def run_voice_pipeline(
 ) -> dict[str, object]:
     request_id = request_id or new_request_id()
     total = total or Timer()
-    audio_path = save_audio(request_id, audio) if os.getenv("AUDIO_PERSISTENCE_ENABLED") == "true" else None
+    audio_path = (
+        save_audio(request_id, audio, metadata.get("mime_type") if isinstance(metadata.get("mime_type"), str) else "")
+        if os.getenv("AUDIO_PERSISTENCE_ENABLED") == "true"
+        else None
+    )
     events: list[dict[str, object]] = []
 
     asr = Timer()
@@ -393,6 +397,8 @@ def save_failure(
             "status": "failed",
             "audio_path": audio_path,
             "replay_of": replay_of,
+            "failure_stage": stage,
+            "error_message": message,
             "created_at": utc_timestamp(),
             "total_ms": total_ms,
         }
@@ -404,11 +410,24 @@ def save_failure(
     }
 
 
-def save_audio(request_id: str, audio: bytes) -> str:
-    path = Path("recordings") / f"{request_id}.webm"
+def save_audio(request_id: str, audio: bytes, mime_type: str = "") -> str:
+    extension = { "audio/mp4": ".m4a", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/webm": ".webm" }.get(
+        mime_type.split(";", 1)[0],
+        ".webm",
+    )
+    path = Path("recordings") / f"{request_id}{extension}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(audio)
     return str(path)
+
+
+def safe_recording_path(audio_path: str) -> Path:
+    recordings = Path("recordings").resolve()
+    path = Path(audio_path)
+    resolved = (path if path.is_absolute() else Path.cwd() / path).resolve()
+    if recordings not in (resolved, *resolved.parents):
+        raise HTTPException(status_code=400, detail="Request audio path is outside recordings")
+    return resolved
 
 
 def sanitize_history(history: object | None) -> list[dict[str, str]]:
