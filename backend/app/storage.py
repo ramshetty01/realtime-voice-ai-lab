@@ -44,6 +44,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
         "history": "text",
         "conversation_turns": "text",
         "slowest_stage": "text",
+        "adapters": "text",
     }.items():
         try:
             db.execute(f"alter table requests add column {column} {definition}")
@@ -59,8 +60,8 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
             insert or replace into requests (
               request_id, status, transcript, assistant_response, audio_path, mime_type, duration_ms, replay_of,
               failure_stage, error_message, history, conversation_turns, asr_ms, llm_total_ms, tts_total_ms,
-              total_ms, slowest_stage, created_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              total_ms, slowest_stage, created_at, adapters
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 trace["request_id"],
@@ -81,6 +82,7 @@ def save_request(trace: dict[str, Any], path: Path = DB_PATH) -> None:
                 trace.get("total_ms"),
                 trace.get("slowest_stage"),
                 trace["created_at"],
+                json.dumps(trace.get("adapters") or {}),
             ),
         )
         retention_limit = int(os.getenv("REQUEST_RETENTION_LIMIT", "0") or "0")
@@ -125,4 +127,8 @@ def get_request(request_id: str, path: Path = DB_PATH) -> dict[str, Any] | None:
                 trace[key] = json.loads(value)
             except json.JSONDecodeError:
                 trace[key] = []
+    try:
+        trace["adapters"] = json.loads(trace.get("adapters") or "{}")
+    except json.JSONDecodeError:
+        trace["adapters"] = {}
     return trace

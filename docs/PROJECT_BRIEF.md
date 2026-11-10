@@ -59,8 +59,17 @@ collects events and stores a trace. Metadata is cleared between utterances.
 Stage events and `llm_token` events are currently buffered until the pipeline finishes;
 they should not be described as live streaming. A failed ASR produces a failure terminal
 event rather than a later success. TTS failures can leave a degraded text response.
-Model timeouts are marked degraded. Adapter-internal development fallbacks can still
-be marked completed; follow-up issue #236 tracks explicit fallback provenance.
+Stage provenance now records provider, fallback reason and a development-output flag
+in response metrics, persisted traces and the UI. Development transcripts, unavailable-
+model replies and silent audio are degraded; strict mode withholds them. Real alternate
+providers are distinguished from simulated output. Timeouts in strict mode withhold
+the generated development reply. A failed TTS can leave a degraded real text response.
+
+`VOICE_MAX_WORKERS` bounds actual blocking adapter jobs per process (default 2, range
+1–8). A timeout or cancelled waiter does not free its slot until the underlying call
+finishes. Saturated HTTP inference returns 429 with Retry-After; WebSocket admission
+failure is explicit. This does not forcibly kill stuck native threads or provide a
+distributed quota; process supervision/hard cancellation remains a deployment concern.
 
 ## Access and data boundaries
 
@@ -101,13 +110,15 @@ production frontend build. `npm audit --audit-level=moderate` checks known npm a
 Verification on 2026-11-11:
 
 - Baseline: 37 backend tests passed; production frontend build passed.
-- After fixes: 54 backend tests pass, including authenticated HTTP/WS, untrusted
+- First access/lifecycle milestone: 54 backend tests passed, including authenticated HTTP/WS, untrusted
   origin/Host denial, two turns on one socket, empty/malformed frames, metadata reset,
   bounded inputs and safe terminal failures.
+- Worker/provenance follow-up: 71 backend tests pass, including controlled timeout/cancellation saturation, actual HTTP 429/recovery, strict-mode refusal and persisted adapter provenance.
 - Frontend production build passes after dependency updates. npm audit changed from
   five findings (one critical, three high, one moderate) to zero known findings.
 - Provider-free browser smoke passes authenticated socket connection, typed chat,
   trace inspection and protected JSON download. Screenshots were inspected locally.
+  The worker/provenance follow-up browser run also displayed and exported explicit development-output flags with degraded status.
   The response came from the missing-Ollama fallback and the audio was a silent WAV;
   this is access/integration evidence, not live voice-quality evidence.
 - CI explicitly installs the Python dev extra and checks frontend build/audit.
@@ -124,7 +135,7 @@ may use whichever model adapters the target service has configured.
 
 Still open:
 
-- [#236 Bounded workers and explicit fallback provenance](https://github.com/ramshetty01/realtime-voice-ai-lab/issues/236): `wait_for(to_thread(...))` does not cancel underlying work. Add bounded admission and worker/process lifecycle control, plus strict adapter mode.
+- [#236 Bounded workers and explicit fallback provenance](https://github.com/ramshetty01/realtime-voice-ai-lab/issues/236): bounded admission, timeout-safe slot lifetime, provenance and strict mode are implemented in the follow-up. Hard worker cancellation/process supervision and actual ASR → model → spoken TTS validation remain open; this issue is not closed by mock/fallback evidence.
 - [#42 Actual NVIDIA NIM verification](https://github.com/ramshetty01/realtime-voice-ai-lab/issues/42) and [#61 End-to-end conversation demo](https://github.com/ramshetty01/realtime-voice-ai-lab/issues/61) require genuine runtime evidence.
 - Add account identity/trace ownership, TLS/WSS, distributed quotas, deletion/retention policy and workload testing before public multi-user deployment.
 - Pin/audit Python runtime dependencies and improve runtime readiness beyond configuration checks.
@@ -135,7 +146,7 @@ Still open:
 Truthful examples to adapt after understanding the code:
 
 - Built a Python/FastAPI and Next.js voice-assistant reliability lab with staged ASR/LLM/TTS adapters, request-level timing, SQLite trace inspection and replay.
-- Hardened HTTP/WebSocket access and fixed per-utterance trace identity and failure reporting; verified behavior with 54 backend tests and an authenticated browser integration check.
+- Hardened HTTP/WebSocket access and fixed per-utterance trace identity and failure reporting; verified behavior with 71 backend tests and an authenticated browser integration check.
 - Updated vulnerable frontend dependencies and added audit enforcement, reducing the recorded npm audit from five findings to zero known findings.
 
 Be ready to explain why this is a chained, buffered pipeline rather than true realtime
@@ -143,3 +154,5 @@ speech-to-speech; why CORS is not authentication; how a shared token differs fro
 authorization; why thread timeouts do not stop model work; and why a successful fallback
 response must not be presented as a validated speech-quality result. Do not claim
 production users, accuracy, latency improvements or end-to-end live quality not measured.
+
+Pull requests: [#237 access/lifecycle/dependencies](https://github.com/ramshetty01/realtime-voice-ai-lab/pull/237) and the stacked worker/provenance follow-up. These changes are not merged or deployed by this maintenance run.

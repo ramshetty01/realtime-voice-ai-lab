@@ -16,7 +16,7 @@ EventType = Literal[
     "request_failed",
 ]
 
-Stage = Literal["audio_validation", "asr", "llm", "tts", "storage", "replay"]
+Stage = Literal["audio_validation", "asr", "llm", "tts", "storage", "replay", "admission"]
 
 EVENT_TYPES: tuple[EventType, ...] = (
     "session_ready",
@@ -32,7 +32,7 @@ EVENT_TYPES: tuple[EventType, ...] = (
     "request_failed",
 )
 
-STAGES: tuple[Stage, ...] = ("audio_validation", "asr", "llm", "tts", "storage", "replay")
+STAGES: tuple[Stage, ...] = ("audio_validation", "asr", "llm", "tts", "storage", "replay", "admission")
 
 
 class VoiceEvent(TypedDict):

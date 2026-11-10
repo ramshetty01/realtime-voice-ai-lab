@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import type { VoiceEvent } from "../src/lib/events";
+import type { AdapterProvenance, VoiceEvent } from "../src/lib/events";
 
 const wsUrl = process.env.NEXT_PUBLIC_VOICE_WS_URL ?? "ws://127.0.0.1:8000/ws/voice";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -27,6 +27,7 @@ type ChatMessage = {
     tts_total_ms?: number;
     total_ms?: number;
     slowest_stage?: string;
+    adapters?: Record<string, AdapterProvenance>;
   };
   requestId?: string;
   retryText?: string;
@@ -45,6 +46,7 @@ type RecentRequest = {
 
 type RequestDetail = RecentRequest & {
   assistant_response?: string;
+  adapters?: Record<string, AdapterProvenance>;
   audio_path?: string;
   conversation_turns?: { role: string; content: string }[];
 };
@@ -577,6 +579,9 @@ export default function Home() {
             {requestDetail && selectedRequestId ? (
               <div className="request-detail">
                 <p>{requestDetail.assistant_response || requestDetail.error_message || "No response saved."}</p>
+                {Object.entries(requestDetail.adapters ?? {}).map(([stage, adapter]) => (
+                  <p key={stage}>{stage.toUpperCase()}: {adapter.provider}{adapter.development ? " — development output" : adapter.fallback ? " — alternate adapter" : ""}{adapter.reason ? `. ${adapter.reason}` : ""}</p>
+                ))}
                 <button type="button" onClick={() => void replayRequest(selectedRequestId, "transcript")}>
                   Replay text
                 </button>
@@ -621,6 +626,9 @@ export default function Home() {
                     ASR {message.metrics.asr_ms ?? "-"} · LLM {message.metrics.llm_total_ms ?? "-"} · TTS{" "}
                     {message.metrics.tts_total_ms ?? "-"}
                   </span>
+                  {Object.entries(message.metrics.adapters ?? {}).map(([stage, adapter]) => (
+                    <span key={stage}>{stage.toUpperCase()}: {adapter.provider}{adapter.development ? " — development output" : adapter.fallback ? " — alternate adapter" : ""}</span>
+                  ))}
                 </div>
               ) : null}
               {message.status === "failed" && message.retryText ? (

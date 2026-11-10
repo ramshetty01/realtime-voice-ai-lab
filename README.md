@@ -178,3 +178,24 @@ Public demo safeguards are in [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md).
 Local ASR/TTS setup notes are in [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md).
 
 [Project technical brief](docs/PROJECT_BRIEF.md) describes the actual architecture, verified behavior and remaining production blockers.
+
+
+### Bounded adapter work and truthful output
+
+`VOICE_MAX_WORKERS` sets a per-process limit of 1–8 actual blocking adapter jobs
+(default 2). Timed-out or cancelled callers keep their slot occupied until the
+underlying worker completes. New HTTP model work receives 429 with Retry-After
+when capacity is full; voice sessions receive a failed admission event. Completed
+text can remain available when TTS is busy or fails.
+
+Every successful/degraded trace and response records `metrics.adapters`, including
+provider, fallback reason and whether the output is development-only. The UI and
+trace details expose this information. Simulated transcripts, missing-model replies
+and silent audio are marked degraded rather than completed. Set
+`VOICE_STRICT_ADAPTERS=true` to withhold these development outputs. A real alternate
+provider such as Ollama after configured NVIDIA failure is recorded as an alternate
+adapter, not as simulated output; strict mode can still use real alternatives.
+
+This bounds work; it does not forcibly terminate an in-process ASR/model thread,
+provide distributed quotas or establish live speech quality. A supervisor/process
+isolation design and hardware-based validation remain required for public service.
