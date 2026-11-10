@@ -6,14 +6,25 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.events import new_request_id, utc_timestamp, voice_event
+from app.execution import PipelineBusy, runner
 from app.logging import log_event
-from app.pipeline import generate_response, llm_history, synthesize_speech, transcribe_audio
+from app.pipeline import AdapterUnavailable, llm_history
+from app.pipeline import generate_response_result as generate_response
+from app.pipeline import synthesize_speech_result as synthesize_speech
+from app.pipeline import transcribe_audio_result as transcribe_audio
 from app.security import allowed_origins, authorized, origin_allowed
 from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
@@ -73,6 +84,11 @@ async def protect_requests(request: Request, call_next):
     return await call_next(request)
 
 
+@app.exception_handler(PipelineBusy)
+async def busy_response(request: Request, exc: PipelineBusy):
+    return JSONResponse({"detail": "Voice adapter capacity is busy. Retry later."}, status_code=429, headers={"Retry-After": "5"})
+
+
 class ConversationTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=2000)
@@ -96,6 +112,8 @@ def health() -> dict[str, str]:
 def ready() -> dict[str, object]:
     return {
         "ready": True,
+        "max_workers": runner.capacity,
+        "strict_adapters": os.getenv("VOICE_STRICT_ADAPTERS", "false").lower() == "true",
         "cors_origins": len(configured_cors_origins()),
         "max_audio_bytes": positive_int_env("MAX_AUDIO_BYTES", 10 * 1024 * 1024),
         "timeouts": {
@@ -278,7 +296,10 @@ async def handle_audio(
         )
     )
 
-    result = await run_voice_pipeline(audio, metadata, request_id=request_id, total=total)
+    try:
+        result = await run_voice_pipeline(audio, metadata, request_id=request_id, total=total)
+    except PipelineBusy:
+        result = save_failure(request_id, "admission", "Voice adapter capacity is busy. Retry later.", total, None, None)
     for event in result["events"]:
         await websocket.send_json(event)
     if result["status"] == "failed":
@@ -314,13 +335,15 @@ async def run_voice_pipeline(
     asr = Timer()
     events.append(voice_event("stage_started", request_id=request_id, stage="asr"))
     try:
-        transcript = await asyncio.wait_for(
-            asyncio.to_thread(transcribe_audio, audio),
-            timeout=positive_float_env("ASR_TIMEOUT_SECONDS", 30),
-        )
+        transcription = await runner.run(transcribe_audio, audio, timeout=positive_float_env("ASR_TIMEOUT_SECONDS", 30))
+        transcript = transcription.value
         asr_ms = asr.ms()
         events.append(voice_event("transcript_completed", request_id=request_id, transcript=transcript))
         events.append(voice_event("stage_completed", request_id=request_id, stage="asr", duration_ms=asr_ms))
+    except PipelineBusy:
+        raise
+    except AdapterUnavailable as exc:
+        return save_failure(request_id, "asr", str(exc), total, replay_of, audio_path, adapters={"asr": exc.result.provenance()})
     except TimeoutError:
         return save_failure(request_id, "asr", "ASR timed out.", total, replay_of, audio_path)
     except Exception:
@@ -333,6 +356,7 @@ async def run_voice_pipeline(
         replay_of=replay_of,
         audio_path=audio_path,
         asr_ms=asr_ms,
+        adapters={"asr": transcription.provenance()},
         history=sanitize_history(metadata.get("history")),
         mime_type=metadata.get("mime_type") if isinstance(metadata.get("mime_type"), str) else None,
         duration_ms=metadata.get("duration_ms") if isinstance(metadata.get("duration_ms"), int) else None,
@@ -350,24 +374,35 @@ async def run_text_pipeline(
     history: list[dict[str, str]] | None = None,
     mime_type: str | None = None,
     duration_ms: int | None = None,
+    adapters: dict[str, object] | None = None,
 ) -> dict[str, object]:
     request_id = request_id or new_request_id()
     total = total or Timer()
     events: list[dict[str, object]] = []
 
+    adapters = dict(adapters or {})
     llm_degraded = False
     llm = Timer()
     events.append(voice_event("stage_started", request_id=request_id, stage="llm"))
     try:
-        assistant_response = await asyncio.wait_for(
-            asyncio.to_thread(generate_response, transcript, history),
-            timeout=positive_float_env("LLM_TIMEOUT_SECONDS", 45),
-        )
+        generated = await runner.run(generate_response, transcript, history, timeout=positive_float_env("LLM_TIMEOUT_SECONDS", 45))
+        assistant_response = generated.value
+        adapters["llm"] = generated.provenance()
+    except PipelineBusy:
+        if adapters:
+            return save_failure(request_id, "admission", "Voice adapter capacity is busy. Retry later.", total, replay_of, audio_path, adapters=adapters)
+        raise
+    except AdapterUnavailable as exc:
+        adapters["llm"] = exc.result.provenance()
+        return save_failure(request_id, "llm", str(exc), total, replay_of, audio_path, adapters=adapters)
     except TimeoutError:
+        adapters["llm"] = {"provider": "unavailable", "fallback": True, "development": True, "reason": "Response generation timed out."}
+        if os.getenv("VOICE_STRICT_ADAPTERS", "false").lower() == "true":
+            return save_failure(request_id, "llm", "Response generation timed out; strict mode withheld development output.", total, replay_of, audio_path, adapters=adapters)
         llm_degraded = True
         assistant_response = "I had trouble generating a full response from the local model. Please try again with a shorter request."
     except Exception:
-        return save_failure(request_id, "llm", "Response generation failed. Check the configured adapter.", total, replay_of, audio_path)
+        return save_failure(request_id, "llm", "Response generation failed. Check the configured adapter.", total, replay_of, audio_path, adapters=adapters)
     for token in assistant_response.split():
         events.append(voice_event("llm_token", request_id=request_id, token=f"{token} "))
     llm_ms = llm.ms()
@@ -377,14 +412,14 @@ async def run_text_pipeline(
     tts = Timer()
     events.append(voice_event("stage_started", request_id=request_id, stage="tts"))
     try:
-        audio_url = await asyncio.wait_for(
-            asyncio.to_thread(synthesize_speech, assistant_response),
-            timeout=positive_float_env("TTS_TIMEOUT_SECONDS", 30),
-        )
+        synthesized = await runner.run(synthesize_speech, assistant_response, timeout=positive_float_env("TTS_TIMEOUT_SECONDS", 30))
+        audio_url = synthesized.value
+        adapters["tts"] = synthesized.provenance()
         tts_ms: int | None = tts.ms()
         events.append(voice_event("tts_audio_ready", request_id=request_id, audio_url=audio_url))
         events.append(voice_event("stage_completed", request_id=request_id, stage="tts", duration_ms=tts_ms))
-    except Exception:
+    except Exception as exc:
+        adapters["tts"] = exc.result.provenance() if isinstance(exc, AdapterUnavailable) else {"provider": "unavailable", "fallback": True, "reason": "Speech generation was unavailable, busy, failed or timed out."}
         tts_ms = None
         events.append(
             voice_event(
@@ -397,7 +432,9 @@ async def run_text_pipeline(
 
     total_ms = total.ms()
     metrics = build_metrics(asr_ms, llm_ms, tts_ms, total_ms)
-    status = "completed" if tts_ms is not None and not llm_degraded else "degraded"
+    metrics["adapters"] = adapters
+    has_fallback = any(isinstance(item, dict) and item.get("fallback") for item in adapters.values())
+    status = "completed" if tts_ms is not None and not llm_degraded and not has_fallback else "degraded"
     conversation_turns = [*llm_history(history), {"role": "user", "content": transcript}, {"role": "assistant", "content": assistant_response}]
     save_request(
         {
@@ -433,7 +470,7 @@ def build_metrics(asr_ms: int | None, llm_ms: int | None, tts_ms: int | None, to
 
 
 def save_failure(
-    request_id: str, stage: str, message: str, total: Timer, replay_of: str | None, audio_path: str | None
+    request_id: str, stage: str, message: str, total: Timer, replay_of: str | None, audio_path: str | None, adapters: dict[str, object] | None = None
 ) -> dict[str, object]:
     total_ms = total.ms()
     save_request(
@@ -443,6 +480,7 @@ def save_failure(
             "audio_path": audio_path,
             "replay_of": replay_of,
             "failure_stage": stage,
+            "adapters": adapters or {},
             "error_message": message,
             "created_at": utc_timestamp(),
             "total_ms": total_ms,
@@ -453,7 +491,7 @@ def save_failure(
         "request_id": request_id,
         "status": "failed",
         "events": [voice_event("request_failed", request_id=request_id, stage=stage, message=message)],
-        "metrics": {"total_ms": total_ms, "slowest_stage": stage},
+        "metrics": {"total_ms": total_ms, "slowest_stage": stage, "adapters": adapters or {}},
     }
 
 

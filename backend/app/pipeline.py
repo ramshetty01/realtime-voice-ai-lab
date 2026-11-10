@@ -8,15 +8,45 @@ import tempfile
 import urllib.error
 import urllib.request
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
 
-def transcribe_audio(audio: bytes) -> str:
+@dataclass(frozen=True)
+class AdapterResult:
+    value: str
+    provider: str
+    fallback: bool = False
+    reason: str | None = None
+    development: bool = False
+
+    def provenance(self) -> dict[str, object]:
+        return {"provider": self.provider, "fallback": self.fallback, "reason": self.reason, "development": self.development}
+
+
+class AdapterUnavailable(Exception):
+    def __init__(self, result: AdapterResult):
+        super().__init__("A real adapter is unavailable; strict mode refuses development output.")
+        self.result = result
+
+
+def adapter_result(value: str, provider: str, fallback: bool = False, reason: str | None = None, *, development: bool = False) -> AdapterResult:
+    result = AdapterResult(value, provider, fallback, reason, development)
+    if development and os.getenv("VOICE_STRICT_ADAPTERS", "false").lower() == "true":
+        raise AdapterUnavailable(result)
+    return result
+
+
+def transcribe_audio_result(audio: bytes) -> AdapterResult:
     if text := os.getenv("ASR_TRANSCRIPT_TEXT"):
-        return text
+        return adapter_result(text, "configured-development-transcript", True, "Using a configured transcript rather than speech recognition.", development=True)
     if transcript := transcribe_with_faster_whisper(audio):
-        return transcript
-    return f"Received {len(audio)} bytes of audio. Configure local ASR to replace this development transcript."
+        return adapter_result(transcript, "faster-whisper")
+    return adapter_result(f"Received {len(audio)} bytes of audio. Configure local ASR to replace this development transcript.", "development-transcript", True, "Speech recognition is unavailable or returned no transcript.", development=True)
+
+
+def transcribe_audio(audio: bytes) -> str:
+    return transcribe_audio_result(audio).value
 
 
 def transcribe_with_faster_whisper(audio: bytes) -> str:
@@ -42,10 +72,11 @@ def transcribe_with_faster_whisper(audio: bytes) -> str:
             return ""
 
 
-def generate_response(transcript: str, history: list[dict[str, str]] | None = None) -> str:
+def generate_response_result(transcript: str, history: list[dict[str, str]] | None = None) -> AdapterResult:
     if response := generate_with_nvidia_nim(transcript, history):
-        return response
+        return adapter_result(response, "nvidia-nim")
 
+    nim_requested = bool(os.getenv("NVIDIA_NIM_BASE_URL") or os.getenv("NVIDIA_NIM_MODEL"))
     prompt = prompt_with_history(transcript, history)
     payload = json.dumps(
         {"model": os.getenv("OLLAMA_MODEL", "llama3.2"), "prompt": prompt, "stream": False}
@@ -58,9 +89,16 @@ def generate_response(transcript: str, history: list[dict[str, str]] | None = No
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             body = json.loads(response.read().decode())
-            return body.get("response") or "The local model returned an empty response."
-    except (OSError, urllib.error.URLError, TimeoutError):
-        return "Local Ollama is unavailable. Start Ollama to generate a model response."
+            text = body.get("response")
+            if isinstance(text, str) and text.strip():
+                return adapter_result(text, "ollama", nim_requested, "Configured NVIDIA adapter did not return a response; used Ollama." if nim_requested else None)
+            return adapter_result("The local model returned an empty response.", "development-response", True, "The model returned no response.", development=True)
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError):
+        return adapter_result("Local Ollama is unavailable. Start Ollama to generate a model response.", "development-response", True, "No configured text-model adapter returned a response.", development=True)
+
+
+def generate_response(transcript: str, history: list[dict[str, str]] | None = None) -> str:
+    return generate_response_result(transcript, history).value
 
 
 def generate_with_nvidia_nim(transcript: str, history: list[dict[str, str]] | None = None) -> str:
@@ -119,12 +157,16 @@ def max_history_turns() -> int:
         return 8
 
 
-def synthesize_speech(text: str) -> str:
+def synthesize_speech_result(text: str) -> AdapterResult:
     if audio := synthesize_with_piper(text):
-        return audio
+        return adapter_result(audio, "piper")
     if audio := synthesize_with_macos_say(text):
-        return audio
-    return wav_data_url(b"\x00\x00" * 1600)
+        return adapter_result(audio, "macos-say", bool(os.getenv("PIPER_MODEL_PATH")), "Configured Piper adapter was unavailable; used macOS speech." if os.getenv("PIPER_MODEL_PATH") else None)
+    return adapter_result(wav_data_url(b"\x00\x00" * 1600), "silent-wav", True, "No speech synthesizer is available; this is silent demo audio.", development=True)
+
+
+def synthesize_speech(text: str) -> str:
+    return synthesize_speech_result(text).value
 
 
 def synthesize_with_piper(text: str) -> str:

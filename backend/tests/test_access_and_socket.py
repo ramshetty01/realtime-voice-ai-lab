@@ -6,6 +6,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.main import app, handle_audio, positive_float_env, run_text_pipeline
 from app.timing import Timer
+from app.pipeline import AdapterResult
 
 ORIGIN = {"origin": "http://127.0.0.1:3000"}
 
@@ -103,10 +104,10 @@ def test_websocket_rejects_untrusted_origin_and_invalid_token(monkeypatch):
 
 def test_socket_two_turns_have_distinct_traces_and_reset_metadata(monkeypatch):
     traces = []
-    monkeypatch.setattr("app.main.transcribe_audio", lambda audio: audio.decode())
-    monkeypatch.setattr("app.main.generate_response", lambda text, history: "reply")
+    monkeypatch.setattr("app.main.transcribe_audio", lambda audio: AdapterResult(audio.decode(), "test-asr"))
+    monkeypatch.setattr("app.main.generate_response", lambda text, history: AdapterResult("reply", "test-llm"))
     monkeypatch.setattr(
-        "app.main.synthesize_speech", lambda text: "data:audio/wav;base64,AA=="
+        "app.main.synthesize_speech", lambda text: AdapterResult("data:audio/wav;base64,AA==", "test-tts")
     )
     monkeypatch.setattr("app.main.save_request", lambda trace: traces.append(trace))
     with client().websocket_connect("ws://127.0.0.1/ws/voice", headers=ORIGIN) as socket:

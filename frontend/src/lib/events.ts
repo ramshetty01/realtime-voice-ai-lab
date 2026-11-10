@@ -1,3 +1,10 @@
+export type AdapterProvenance = {
+  provider: string;
+  fallback: boolean;
+  reason?: string | null;
+  development?: boolean;
+};
+
 export const EVENT_TYPES = [
   "session_ready",
   "client_audio_ready",
@@ -12,7 +19,7 @@ export const EVENT_TYPES = [
   "request_failed",
 ] as const;
 
-export const STAGES = ["audio_validation", "asr", "llm", "tts", "storage", "replay"] as const;
+export const STAGES = ["audio_validation", "asr", "llm", "tts", "storage", "replay", "admission"] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
 export type Stage = (typeof STAGES)[number];
@@ -35,5 +42,6 @@ export type VoiceEvent = {
     tts_total_ms?: number;
     total_ms?: number;
     slowest_stage?: string;
+    adapters?: Record<string, AdapterProvenance>;
   };
 };
