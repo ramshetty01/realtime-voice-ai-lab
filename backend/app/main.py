@@ -1,10 +1,12 @@
 import asyncio
+import json
+import math
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -12,16 +14,13 @@ from pydantic import BaseModel, Field
 from app.events import new_request_id, utc_timestamp, voice_event
 from app.logging import log_event
 from app.pipeline import generate_response, llm_history, synthesize_speech, transcribe_audio
+from app.security import allowed_origins, authorized, origin_allowed
 from app.storage import get_request, recent_requests, save_request
 from app.timing import Timer
 
 
 def configured_cors_origins() -> list[str]:
-    origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(",")]
-    origins = [origin for origin in origins if origin]
-    if not origins:
-        raise RuntimeError("CORS_ORIGINS must include at least one origin.")
-    return origins
+    return allowed_origins()
 
 
 def positive_int_env(name: str, default: int) -> int:
@@ -39,8 +38,8 @@ def positive_float_env(name: str, default: float) -> float:
         value = float(os.getenv(name, str(default)))
     except ValueError as exc:
         raise RuntimeError(f"{name} must be a number.") from exc
-    if value <= 0:
-        raise RuntimeError(f"{name} must be greater than zero.")
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(f"{name} must be finite and greater than zero.")
     return value
 
 
@@ -54,6 +53,26 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def protect_requests(request: Request, call_next):
+    if request.url.path not in {"/health", "/ready"}:
+        if not origin_allowed(request.headers.get("origin")):
+            return JSONResponse({"detail": "Origin is not allowed."}, status_code=403)
+        if request.method != "OPTIONS":
+            header = request.headers.get("authorization", "")
+            token = header[7:] if header.startswith("Bearer ") else ""
+            if not authorized(request.client.host if request.client else None, token, request.url.hostname):
+                return JSONResponse({"detail": "A valid access token or loopback-only mode is required."}, status_code=401)
+    if request.method == "POST":
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 262144:
+                return JSONResponse({"detail": "Request body is too large."}, status_code=413)
+        request._body = bytes(body)
+    return await call_next(request)
+
+
 class ConversationTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=2000)
@@ -61,7 +80,7 @@ class ConversationTurn(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
-    history: list[ConversationTurn] = Field(default_factory=list)
+    history: list[ConversationTurn] = Field(default_factory=list, max_length=32)
 
 
 @app.get("/health")
@@ -88,8 +107,8 @@ def ready() -> dict[str, object]:
 
 
 @app.get("/requests")
-def list_requests(limit: int = 20) -> dict[str, object]:
-    return {"requests": recent_requests(limit=min(limit, 100))}
+def list_requests(limit: int = Query(default=20, ge=1, le=100)) -> dict[str, object]:
+    return {"requests": recent_requests(limit=limit)}
 
 
 @app.get("/requests/{request_id}")
@@ -148,24 +167,39 @@ async def replay_audio(request_id: str) -> dict[str, object]:
 
 @app.websocket("/ws/voice")
 async def voice_socket(websocket: WebSocket) -> None:
+    if not origin_allowed(websocket.headers.get("origin")):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
-    request_id = new_request_id()
-    total = Timer()
-    metadata: dict[str, object] = {}
-    log_event("request_started", request_id=request_id)
-    await websocket.send_json(voice_event("request_started", request_id=request_id))
-
     try:
+        frame = await asyncio.wait_for(websocket.receive_text(), timeout=5)
+        if len(frame) > 4096:
+            await websocket.close(code=1008)
+            return
+        credentials = json.loads(frame)
+        token = credentials.get("token", "") if isinstance(credentials, dict) else None
+        if not isinstance(credentials, dict) or credentials.get("type") != "authenticate" or not isinstance(token, str) or not authorized(websocket.client.host if websocket.client else None, token, websocket.url.hostname):
+            await websocket.close(code=1008)
+            return
+        await websocket.send_json(voice_event("session_ready"))
+        metadata: dict[str, object] = {}
         while True:
             message = await websocket.receive()
             if message["type"] == "websocket.disconnect":
                 return
-            if text := message.get("text"):
-                metadata = await handle_client_event(websocket, request_id, text)
-            elif audio := message.get("bytes"):
-                await handle_audio(websocket, request_id, audio, metadata, total)
+            if message.get("text") is not None:
+                metadata = await handle_client_event(websocket, new_request_id(), message["text"])
+            elif message.get("bytes") is not None:
+                request_id = new_request_id()
+                total = Timer()
+                log_event("request_started", request_id=request_id)
+                await websocket.send_json(voice_event("request_started", request_id=request_id))
+                await handle_audio(websocket, request_id, message["bytes"], metadata, total)
+                metadata = {}
     except WebSocketDisconnect:
         return
+    except (TimeoutError, ValueError, KeyError):
+        await websocket.close(code=1008)
 
 
 async def handle_client_event(websocket: WebSocket, request_id: str, text: str) -> dict[str, object]:
@@ -178,9 +212,11 @@ async def handle_client_event(websocket: WebSocket, request_id: str, text: str) 
         )
     )
     try:
-        import json
-
+        if len(text) > 32768:
+            raise ValueError("Metadata exceeds limit")
         payload = json.loads(text)
+        if not isinstance(payload, dict):
+            raise ValueError("Metadata must be an object")
     except ValueError:
         await websocket.send_json(
             voice_event(
@@ -243,13 +279,16 @@ async def handle_audio(
     )
 
     result = await run_voice_pipeline(audio, metadata, request_id=request_id, total=total)
-    for event in result.pop("events"):
+    for event in result["events"]:
         await websocket.send_json(event)
+    if result["status"] == "failed":
+        return
     await websocket.send_json(
         voice_event(
             "request_completed",
             request_id=request_id,
-            message="Voice pipeline completed.",
+            message="Voice pipeline finished.",
+            status=result["status"],
             audio_size=len(audio),
             metrics=result["metrics"],
         )
@@ -284,6 +323,8 @@ async def run_voice_pipeline(
         events.append(voice_event("stage_completed", request_id=request_id, stage="asr", duration_ms=asr_ms))
     except TimeoutError:
         return save_failure(request_id, "asr", "ASR timed out.", total, replay_of, audio_path)
+    except Exception:
+        return save_failure(request_id, "asr", "ASR failed. Check the configured adapter.", total, replay_of, audio_path)
 
     text_result = await run_text_pipeline(
         transcript,
@@ -296,7 +337,7 @@ async def run_voice_pipeline(
         mime_type=metadata.get("mime_type") if isinstance(metadata.get("mime_type"), str) else None,
         duration_ms=metadata.get("duration_ms") if isinstance(metadata.get("duration_ms"), int) else None,
     )
-    return {"events": events + text_result["events"], "metrics": text_result["metrics"]}
+    return {**text_result, "events": events + text_result["events"]}
 
 
 async def run_text_pipeline(
@@ -314,6 +355,7 @@ async def run_text_pipeline(
     total = total or Timer()
     events: list[dict[str, object]] = []
 
+    llm_degraded = False
     llm = Timer()
     events.append(voice_event("stage_started", request_id=request_id, stage="llm"))
     try:
@@ -322,7 +364,10 @@ async def run_text_pipeline(
             timeout=positive_float_env("LLM_TIMEOUT_SECONDS", 45),
         )
     except TimeoutError:
+        llm_degraded = True
         assistant_response = "I had trouble generating a full response from the local model. Please try again with a shorter request."
+    except Exception:
+        return save_failure(request_id, "llm", "Response generation failed. Check the configured adapter.", total, replay_of, audio_path)
     for token in assistant_response.split():
         events.append(voice_event("llm_token", request_id=request_id, token=f"{token} "))
     llm_ms = llm.ms()
@@ -339,20 +384,20 @@ async def run_text_pipeline(
         tts_ms: int | None = tts.ms()
         events.append(voice_event("tts_audio_ready", request_id=request_id, audio_url=audio_url))
         events.append(voice_event("stage_completed", request_id=request_id, stage="tts", duration_ms=tts_ms))
-    except TimeoutError:
+    except Exception:
         tts_ms = None
         events.append(
             voice_event(
                 "request_failed",
                 request_id=request_id,
                 stage="tts",
-                message="Speech synthesis timed out. Text response is still available.",
+                message="Speech synthesis failed or timed out. Text response is still available.",
             )
         )
 
     total_ms = total.ms()
     metrics = build_metrics(asr_ms, llm_ms, tts_ms, total_ms)
-    status = "completed" if tts_ms is not None else "degraded"
+    status = "completed" if tts_ms is not None and not llm_degraded else "degraded"
     conversation_turns = [*llm_history(history), {"role": "user", "content": transcript}, {"role": "assistant", "content": assistant_response}]
     save_request(
         {
@@ -405,6 +450,8 @@ def save_failure(
     )
     log_event("request_failed", request_id=request_id, stage=stage, message=message, total_ms=total_ms)
     return {
+        "request_id": request_id,
+        "status": "failed",
         "events": [voice_event("request_failed", request_id=request_id, stage=stage, message=message)],
         "metrics": {"total_ms": total_ms, "slowest_stage": stage},
     }

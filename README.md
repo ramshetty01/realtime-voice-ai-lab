@@ -1,6 +1,6 @@
 # Realtime Voice AI Reliability Lab
 
-Production-style local voice AI lab for browser microphone capture, FastAPI WebSockets, local ASR/LLM/TTS adapters, latency tracking, SQLite traces, replay debugging, and failure handling.
+Local voice AI reliability lab for browser microphone capture, FastAPI WebSockets, local ASR/LLM/TTS adapters, latency tracking, SQLite traces, replay debugging, and failure handling.
 
 ## Project Layout
 
@@ -62,10 +62,24 @@ Open:
 - Frontend: http://127.0.0.1:3000
 - Backend health: http://127.0.0.1:8000/health
 
+## Access controls
+
+Direct local development accepts loopback clients when `VOICE_LOCAL_ONLY=true` and
+`VOICE_API_TOKEN` is blank. Shared access requires a private `VOICE_API_TOKEN`; enter
+that token in the browser’s **API access** section. It stays in page memory. Do not
+enter a model-provider API key there. HTTP requests use bearer authorization and
+WebSocket clients authenticate in their first frame, never in a URL. Exact browser
+origins are checked for both transports.
+
+Local mode must not be exposed through a reverse proxy. Shared-token mode is for a
+single owner/reviewer group, not per-user trace isolation. See [public access notes](docs/PUBLIC_DEMO.md).
+
 ## Docker
 
 ```sh
 cp .env.example .env
+
+# Set VOICE_API_TOKEN to a private value in .env first.
 docker compose up --build
 ```
 
@@ -162,3 +176,5 @@ Current local validation notes are in [docs/VALIDATION.md](docs/VALIDATION.md).
 Public demo safeguards are in [docs/PUBLIC_DEMO.md](docs/PUBLIC_DEMO.md).
 
 Local ASR/TTS setup notes are in [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md).
+
+[Project technical brief](docs/PROJECT_BRIEF.md) describes the actual architecture, verified behavior and remaining production blockers.

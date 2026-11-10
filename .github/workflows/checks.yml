@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: cd backend && uv run pytest
+      - run: cd backend && uv run --extra dev pytest
 
   frontend:
     runs-on: ubuntu-latest
@@ -23,3 +23,4 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: cd frontend && npm ci
       - run: cd frontend && npm run build
+      - run: cd frontend && npm audit --audit-level=moderate

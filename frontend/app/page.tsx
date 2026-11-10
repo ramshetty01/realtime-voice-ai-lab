@@ -71,6 +71,7 @@ export default function Home() {
   const silenceStartedAtRef = useRef(0);
   const lastVoiceAudioRef = useRef<Blob | null>(null);
   const lastVoiceDurationRef = useRef(0);
+  const [accessToken, setAccessToken] = useState("");
   const [connection, setConnection] = useState("connecting");
   const [voiceStatus, setVoiceStatus] = useState("ready");
   const [prompt, setPrompt] = useState("");
@@ -86,6 +87,10 @@ export default function Home() {
   const [backendHealth, setBackendHealth] = useState("checking");
   const [copiedMessageId, setCopiedMessageId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([welcomeTurn()]);
+
+  function accessHeaders(): Record<string, string> {
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  }
 
   function updateMessage(id: string, patch: Partial<ChatMessage>) {
     setMessages((current) => current.map((message) => (message.id === id ? { ...message, ...patch } : message)));
@@ -109,7 +114,7 @@ export default function Home() {
   async function loadRecentRequests() {
     setRecentError("");
     try {
-      const reply = await fetch(`${apiUrl}/requests?limit=8`);
+      const reply = await fetch(`${apiUrl}/requests?limit=8`, { headers: accessHeaders() });
       if (!reply.ok) throw new Error("Recent requests failed.");
       const payload = await reply.json();
       setRecentRequests(Array.isArray(payload.requests) ? payload.requests : []);
@@ -121,24 +126,31 @@ export default function Home() {
 
   async function loadRequestDetail(requestId: string) {
     setSelectedRequestId(requestId);
-    const reply = await fetch(`${apiUrl}/requests/${requestId}`);
+    const reply = await fetch(`${apiUrl}/requests/${requestId}`, { headers: accessHeaders() });
     if (!reply.ok) return;
     setRequestDetail(await reply.json());
   }
 
   async function replayRequest(requestId: string, kind: "transcript" | "audio") {
-    const reply = await fetch(`${apiUrl}/requests/${requestId}/replay-${kind}`, { method: "POST" });
+    const reply = await fetch(`${apiUrl}/requests/${requestId}/replay-${kind}`, { method: "POST", headers: accessHeaders() });
     if (!reply.ok) return;
     const payload = await reply.json();
-    const response = payload.events?.find((event: VoiceEvent) => event.type === "llm_completed")?.response ?? "Replay completed.";
+    const response = payload.events?.find((event: VoiceEvent) => event.type === "llm_completed")?.response ?? payload.events?.find((event: VoiceEvent) => event.type === "request_failed")?.message ?? "Replay finished.";
     setMessages((current) => [
       ...current,
-      { id: newId(), role: "assistant", text: response, createdAt: new Date().toISOString(), requestId: payload.request_id, status: "done" },
+      { id: newId(), role: "assistant", text: response, createdAt: new Date().toISOString(), requestId: payload.request_id, status: payload.status === "failed" ? "failed" : payload.status === "degraded" ? "degraded" : "done" },
     ]);
   }
 
-  function downloadTrace(requestId: string) {
-    window.open(`${apiUrl}/requests/${requestId}/export`, "_blank");
+  async function downloadTrace(requestId: string) {
+    const response = await fetch(`${apiUrl}/requests/${requestId}/export`, { headers: accessHeaders() });
+    if (!response.ok) { setRecentError("Could not export this trace. Check API access."); return; }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${requestId}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function conversationHistory() {
@@ -175,16 +187,13 @@ export default function Home() {
 
       socket.addEventListener(
         "open",
-        () =>
-          settle(() => {
-            setConnection("connected");
-            resolve(socket);
-          }),
+        () => { socket.send(JSON.stringify({ type: "authenticate", token: accessToken })); },
         { once: true }
       );
       socket.addEventListener(
         "close",
         () => {
+          if (socketRef.current !== socket) return;
           setConnection("disconnected");
           settle(() => {
             setConnection("disconnected");
@@ -212,6 +221,11 @@ export default function Home() {
           return;
         }
 
+        if (event.type === "session_ready") {
+          settle(() => { setConnection("connected"); resolve(socket); });
+          return;
+        }
+        if (event.type === "request_started") assistantIdRef.current = "";
         if (event.type === "transcript_completed" && event.transcript) {
           const assistantId = newId();
           assistantIdRef.current = assistantId;
@@ -241,11 +255,12 @@ export default function Home() {
           updateMessage(assistantIdRef.current, { audioUrl: event.audio_url });
         }
         if (event.type === "request_completed") {
-          updateMessage(assistantIdRef.current, { metrics: event.metrics, status: "done" });
+          updateMessage(assistantIdRef.current, { metrics: event.metrics, status: event.status === "degraded" ? "degraded" : "done" });
           setVoiceStatus("ready");
         }
         if (event.type === "request_failed") {
-          updateMessage(assistantIdRef.current, { status: "failed" });
+          if (assistantIdRef.current) updateMessage(assistantIdRef.current, { status: "failed" });
+          else setMessages((current) => [...current, { id: newId(), role: "assistant", text: event.message ?? "Voice request failed.", createdAt: new Date().toISOString(), requestId: event.request_id, status: "failed" }]);
           setVoiceStatus(event.message ?? "failed");
         }
       });
@@ -324,18 +339,18 @@ export default function Home() {
     try {
       const reply = await fetch(`${apiUrl}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...accessHeaders() },
         signal: controller.signal,
         body: JSON.stringify({ message, history }),
       });
       if (!reply.ok) throw new Error("Chat request failed.");
       const payload = await reply.json();
       updateMessage(assistantId, {
-        text: payload.response ?? "",
+        text: payload.response || payload.events?.find((event: VoiceEvent) => event.type === "request_failed")?.message || "",
         audioUrl: payload.audio_url ?? "",
         metrics: payload.metrics,
         requestId: payload.request_id,
-        status: payload.status === "degraded" ? "degraded" : "done",
+        status: payload.status === "failed" ? "failed" : payload.status === "degraded" ? "degraded" : "done",
       });
       setAudioUrl(payload.audio_url ?? "");
       if (!payload.audio_url) setVoiceStatus("ready");
@@ -508,6 +523,20 @@ export default function Home() {
             </button>
           </div>
         </header>
+
+        <details className="connection-warning">
+          <summary>API access</summary>
+          <label>Access token <input type="password" autoComplete="off" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} /></label>
+          <button type="button" onClick={() => {
+            socketRef.current?.close();
+            socketRef.current = null;
+            socketReadyPromiseRef.current = null;
+            setRecentRequests([]);
+            setRequestDetail(null);
+            void connectVoiceSocket().catch(() => undefined);
+          }}>Connect</button>
+          <p>Required for shared access. Kept only in this page's memory; never put your model-provider key here.</p>
+        </details>
 
         {connection !== "connected" ? (
           <div className="connection-warning" role="status">

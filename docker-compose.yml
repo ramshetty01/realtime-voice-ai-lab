@@ -2,9 +2,11 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       APP_ENV: development
+      VOICE_API_TOKEN: ${VOICE_API_TOKEN:?Set a private VOICE_API_TOKEN for Docker access}
+      VOICE_LOCAL_ONLY: "false"
       DATABASE_URL: sqlite:///./data/voice_lab.db
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: llama3.2
@@ -31,7 +33,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
       NEXT_PUBLIC_VOICE_WS_URL: ws://127.0.0.1:8000/ws/voice

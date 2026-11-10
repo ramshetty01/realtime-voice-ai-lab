@@ -136,6 +136,7 @@ def test_handle_audio_completes_after_degraded_tts(monkeypatch) -> None:
 
     async def fake_pipeline(*_args, **_kwargs):
         return {
+            "status": "degraded",
             "events": [{"type": "request_failed", "request_id": "req_test", "stage": "tts"}],
             "metrics": {"total_ms": 10, "slowest_stage": "tts"},
         }
@@ -147,6 +148,7 @@ def test_handle_audio_completes_after_degraded_tts(monkeypatch) -> None:
 
     assert websocket.events[-1]["type"] == "request_completed"
     assert websocket.events[-1]["metrics"]["slowest_stage"] == "tts"
+    assert websocket.events[-1]["status"] == "degraded"
 
 
 def test_invalid_websocket_json_returns_failure() -> None:
