@@ -3,6 +3,7 @@ from typing import Any, Literal, NotRequired, TypedDict
 from uuid import uuid4
 
 EventType = Literal[
+    "session_ready",
     "client_audio_ready",
     "request_started",
     "stage_started",
@@ -18,6 +19,7 @@ EventType = Literal[
 Stage = Literal["audio_validation", "asr", "llm", "tts", "storage", "replay"]
 
 EVENT_TYPES: tuple[EventType, ...] = (
+    "session_ready",
     "client_audio_ready",
     "request_started",
     "stage_started",

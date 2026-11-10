@@ -1,4 +1,5 @@
 export const EVENT_TYPES = [
+  "session_ready",
   "client_audio_ready",
   "request_started",
   "stage_started",
@@ -22,6 +23,7 @@ export type VoiceEvent = {
   request_id?: string;
   stage?: Stage;
   message?: string;
+  status?: "completed" | "degraded" | "failed";
   token?: string;
   transcript?: string;
   response?: string;
