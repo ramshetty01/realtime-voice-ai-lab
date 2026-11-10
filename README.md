@@ -1,6 +1,16 @@
-# Realtime Voice AI Reliability Lab
+# Realtime Voice AI Lab
 
-Local voice AI reliability lab for browser microphone capture, FastAPI WebSockets, local ASR/LLM/TTS adapters, latency tracking, SQLite traces, replay debugging, and failure handling.
+**A voice-assistant lab with ASR/LLM/TTS adapters, request traces and explicit fallback reporting.**
+
+Capture browser audio or typed input, run a chained response workflow, and inspect timing, failures and adapter provenance.
+
+[![CI](https://github.com/ramshetty01/realtime-voice-ai-lab/actions/workflows/checks.yml/badge.svg)](https://github.com/ramshetty01/realtime-voice-ai-lab/actions/workflows/checks.yml)
+
+**Stack:** Python · FastAPI · WebSockets · Next.js · React · TypeScript · SQLite.
+
+**Status:** Tested local application. Audio is processed per utterance; live speech quality and public multi-user deployment remain unverified.
+
+[Project brief](docs/PROJECT_BRIEF.md) · [Technical portfolio](https://github.com/ramshetty01/ramshetty01/blob/main/PROJECT_PORTFOLIO.md) · [Issues](https://github.com/ramshetty01/realtime-voice-ai-lab/issues)
 
 ## Project Layout
 
