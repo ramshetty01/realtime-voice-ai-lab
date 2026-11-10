@@ -155,4 +155,4 @@ authorization; why thread timeouts do not stop model work; and why a successful 
 response must not be presented as a validated speech-quality result. Do not claim
 production users, accuracy, latency improvements or end-to-end live quality not measured.
 
-Pull requests: [#237 access/lifecycle/dependencies](https://github.com/ramshetty01/realtime-voice-ai-lab/pull/237) and the stacked worker/provenance follow-up. These changes are not merged or deployed by this maintenance run.
+Pull requests: [#237 access/lifecycle/dependencies](https://github.com/ramshetty01/realtime-voice-ai-lab/pull/237) and [#238 worker/provenance](https://github.com/ramshetty01/realtime-voice-ai-lab/pull/238). These changes are not merged or deployed by this maintenance run.

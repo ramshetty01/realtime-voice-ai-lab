@@ -65,8 +65,15 @@ def test_cancelled_waiter_does_not_cancel_or_release_blocking_work():
                 await runner.run(lambda: None, timeout=1)
         finally:
             release.set()
-        await asyncio.sleep(0.02)
-        assert await runner.run(lambda: "recovered", timeout=1) == "recovered"
+        deadline = asyncio.get_running_loop().time() + 2
+        while True:
+            try:
+                assert await runner.run(lambda: "recovered", timeout=1) == "recovered"
+                break
+            except PipelineBusy:
+                if asyncio.get_running_loop().time() >= deadline:
+                    pytest.fail("Worker did not restore capacity after cancellation")
+                await asyncio.sleep(0.001)
 
     try:
         asyncio.run(scenario())
